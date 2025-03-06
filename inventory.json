@@ -1,0 +1,14 @@
+{
+  "machines": {
+    "elserver": {
+      "name": "elserver",
+      "tags": [],
+      "deploy": {}
+    },
+    "offsite-backup": {
+      "name": "offsite-backup",
+      "tags": [],
+      "deploy": {}
+    }
+  }
+}

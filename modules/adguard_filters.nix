@@ -1,0 +1,318 @@
+# List of Ad-/Malware filter lists to use in AdGuardHome
+
+{
+  services.adguardhome.settings.filters = [
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt";
+      name = "AdGuard DNS filter";
+      id = 1;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt";
+      name = "AdAway Default Blocklist";
+      id = 2;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_24.txt";
+      name = "1Hosts (Lite)";
+      id = 3;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_38.txt";
+      name = "1Hosts (mini)";
+      id = 4;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt";
+      name = "Dan Pollock's List";
+      id = 5;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_34.txt";
+      name = "HaGeZi Personal Black & White";
+      id = 6;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_32.txt";
+      name = "The NoTracking blocklist";
+      id = 7;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_5.txt";
+      name = "OISD Blocklist Basic";
+      id = 8;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_27.txt";
+      name = "OISD Blocklist Full";
+      id = 9;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt";
+      name = "Peter Lowe's Blocklist";
+      id = 10;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_33.txt";
+      name = "Steven Black's List";
+      id = 11;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_6.txt";
+      name = "Dandelion Sprout's Game Console Adblock List";
+      id = 12;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_7.txt";
+      name = "Perflyst and Dandelion Sprout's Smart-TV Blocklist";
+      id = 13;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_23.txt";
+      name = "WindowsSpyBlocker - Hosts spy rules";
+      id = 14;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_30.txt";
+      name = "Phishing URL Blocklist (PhishTank and OpenPhish)";
+      id = 15;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_12.txt";
+      name = "Dandelion Sprout's Anti-Malware List";
+      id = 16;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_8.txt";
+      name = "NoCoin Filter List";
+      id = 17;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_10.txt";
+      name = "Scam Blocklist by DurableNapkin";
+      id = 18;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_31.txt";
+      name = "Stalkerware Indicators List";
+      id = 19;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_11.txt";
+      name = "Malicious URL Blocklist (URLHaus)";
+      id = 20;
+    }
+    {
+      enabled = true;
+      url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_9.txt";
+      name = "The Big List of Hacked Malware Web Sites";
+      id = 21;
+    }
+    {
+      enabled = true;
+      url = "https://raw.githubusercontent.com/PolishFiltersTeam/KADhosts/master/KADhosts.txt";
+      name = "KADhosts";
+      id = 23;
+    }
+    {
+      enabled = true;
+      url = "https://raw.githubusercontent.com/FadeMind/hosts.extras/master/add.Spam/hosts";
+      name = "FadeMind";
+      id = 24;
+    }
+    {
+      enabled = true;
+      url = "https://v.firebog.net/hosts/static/w3kbl.txt";
+      name = "Firebog Static";
+      id = 25;
+    }
+    {
+      enabled = true;
+      url = "https://adaway.org/hosts.txt";
+      name = "Adaway Firebog";
+      id = 26;
+    }
+    {
+      enabled = true;
+      url = "https://v.firebog.net/hosts/AdguardDNS.txt";
+      name = "Adguard Firebog";
+      id = 27;
+    }
+    {
+      enabled = true;
+      url = "https://v.firebog.net/hosts/Admiral.txt";
+      name = "Admiral Firebog";
+      id = 28;
+    }
+    {
+      enabled = true;
+      url = "https://raw.githubusercontent.com/anudeepND/blacklist/master/adservers.txt";
+      name = "anudeepND";
+      id = 29;
+    }
+    {
+      enabled = true;
+      url = "https://s3.amazonaws.com/lists.disconnect.me/simple_ad.txt";
+      name = "Disconnect.me";
+      id = 30;
+    }
+    {
+      enabled = true;
+      url = "https://v.firebog.net/hosts/Easylist.txt";
+      name = "Easylist Firebog";
+      id = 31;
+    }
+    {
+      enabled = true;
+      url = "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=0&mimetype=plaintext";
+      name = "YoYo Adservers";
+      id = 32;
+    }
+    {
+      enabled = true;
+      url = "https://raw.githubusercontent.com/FadeMind/hosts.extras/master/UncheckyAds/hosts";
+      name = "FadeMind Unchecky";
+      id = 33;
+    }
+    {
+      enabled = true;
+      url = "https://raw.githubusercontent.com/bigdargon/hostsVN/master/hosts";
+      name = "BigDargon";
+      id = 34;
+    }
+    {
+      enabled = true;
+      url = "https://v.firebog.net/hosts/Easyprivacy.txt";
+      name = "EasyPrivacy";
+      id = 35;
+    }
+    {
+      enabled = true;
+      url = "https://v.firebog.net/hosts/Prigent-Ads.txt";
+      name = "Prigent Ads";
+      id = 36;
+    }
+    {
+      enabled = true;
+      url = "https://raw.githubusercontent.com/FadeMind/hosts.extras/master/add.2o7Net/hosts";
+      name = "FadeMind 2o7";
+      id = 37;
+    }
+    {
+      enabled = true;
+      url = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy.txt";
+      name = "Windows Spy Blocker";
+      id = 38;
+    }
+    {
+      enabled = true;
+      url = "https://hostfiles.frogeye.fr/firstparty-trackers-hosts.txt";
+      name = "Frogeye";
+      id = 39;
+    }
+    {
+      enabled = true;
+      url = "https://raw.githubusercontent.com/DandelionSprout/adfilt/master/Alternate%20versions%20Anti-Malware%20List/AntiMalwareHosts.txt";
+      name = "Dandelion Sprout Firebog";
+      id = 40;
+    }
+    {
+      enabled = true;
+      url = "https://osint.digitalside.it/Threat-Intel/lists/latestdomains.txt";
+      name = "Osint";
+      id = 41;
+    }
+    {
+      enabled = true;
+      url = "https://s3.amazonaws.com/lists.disconnect.me/simple_malvertising.txt";
+      name = "Disconnect.me Malvertising";
+      id = 42;
+    }
+    {
+      enabled = true;
+      url = "https://v.firebog.net/hosts/Prigent-Crypto.txt";
+      name = "Prigent Crypto";
+      id = 43;
+    }
+    {
+      enabled = true;
+      url = "https://raw.githubusercontent.com/FadeMind/hosts.extras/master/add.Risk/hosts";
+      name = "Faded Mind Add Risk";
+      id = 44;
+    }
+    {
+      enabled = true;
+      url = "https://bitbucket.org/ethanr/dns-blacklists/raw/8575c9f96e5b4a1308f2f12394abd86d0927a4a0/bad_lists/Mandiant_APT1_Report_Appendix_D.txt";
+      name = "Mandiant";
+      id = 45;
+    }
+    {
+      enabled = true;
+      url = "https://phishing.army/download/phishing_army_blocklist_extended.txt";
+      name = "Phishing Army";
+      id = 46;
+    }
+    {
+      enabled = true;
+      url = "https://gitlab.com/quidsup/notrack-blocklists/raw/master/notrack-malware.txt";
+      name = "Quidsup";
+      id = 47;
+    }
+    {
+      enabled = true;
+      url = "https://v.firebog.net/hosts/RPiList-Malware.txt";
+      name = "Firebog RPiList Malware";
+      id = 48;
+    }
+    {
+      enabled = true;
+      url = "https://v.firebog.net/hosts/RPiList-Phishing.txt";
+      name = "Firebog RPiList Phishing";
+      id = 49;
+    }
+    {
+      enabled = true;
+      url = "https://raw.githubusercontent.com/Spam404/lists/master/main-blacklist.txt";
+      name = "Spam404";
+      id = 50;
+    }
+    {
+      enabled = true;
+      url = "https://raw.githubusercontent.com/AssoEchap/stalkerware-indicators/master/generated/hosts";
+      name = "Stalkerware";
+      id = 51;
+    }
+    {
+      enabled = true;
+      url = "https://urlhaus.abuse.ch/downloads/hostfile/";
+      name = "Abuse.ch";
+      id = 52;
+    }
+    {
+      enabled = true;
+      url = "https://zerodot1.gitlab.io/CoinBlockerLists/hosts_browser";
+      name = "Firebog Coinblocker";
+      id = 53;
+    }
+  ];
+}
