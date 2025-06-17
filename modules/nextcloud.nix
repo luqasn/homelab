@@ -50,16 +50,6 @@ in
       ghostscript
     ];
 
-    users.groups.nextcloud-data-a = {
-      gid = 100000;
-      members = [ "nextcloud" ];
-    };
-
-    users.groups.nextcloud-data-b = {
-      gid = 100033;
-      members = [ "nextcloud" ];
-    };
-
     systemd.services.nextcloud-cron = {
       # required for memories
       # see https://github.com/pulsejet/memories/blob/master/docs/troubleshooting.md#issues-with-nixos
