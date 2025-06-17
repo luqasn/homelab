@@ -51,8 +51,10 @@ in
           enabledCollectors = [ "systemd" ];
           port = 9002;
         };
-        smartctl.enable = true;
-        zfs.enable = true;
+        systemd = {
+          enable = true;
+          listenAddress = "localhost";
+        };
       }
       (lib.optionalAttrs (config.boot.supportedFilesystems.zfs or false) {
         zfs = {
@@ -100,6 +102,14 @@ in
           static_configs = [
             {
               targets = [ "127.0.0.1:${toString config.services.prometheus.exporters.node.port}" ];
+            }
+          ];
+        }
+        {
+          job_name = "systemd";
+          static_configs = [
+            {
+              targets = [ "127.0.0.1:${toString config.services.prometheus.exporters.systemd.port}" ];
             }
           ];
         }
