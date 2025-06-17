@@ -23,11 +23,6 @@ in
     };
   };
   config = {
-
-    networking.extraHosts = ''
-      127.0.0.1 ${collaboraDomain}
-    '';
-
     users.groups.sendmail.members = [
       "nextcloud"
     ];
@@ -249,7 +244,7 @@ in
     virtualisation.podman.enable = true;
     virtualisation.oci-containers.containers."collabora" = {
       autoStart = true;
-      image = "docker.io/collabora/code:latest";
+      image = "docker.io/collabora/code:25.04.2.2.1";
       ports = [ "9980:9980/tcp" ];
       environment = {
         server_name = collaboraDomain;
