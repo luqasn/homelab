@@ -31,6 +31,7 @@ in
 
       user_rules = [
         "@@||brevo.com^$important"
+        "@@||sentry-cdn.com^$important"
       ];
 
       dns = {
