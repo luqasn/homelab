@@ -103,7 +103,7 @@ in
       datadir = config.datasets.nextcloud;
 
       # Need to manually increment with every major upgrade.
-      package = pkgs.nextcloud30;
+      package = pkgs.nextcloud31;
 
       database.createLocally = false;
 
@@ -114,6 +114,8 @@ in
       maxUploadSize = "16G";
 
       settings = {
+        "overwrite.cli.url" = "https://${nextcloudDomain}";
+        "maintenance_window_start" = 1;
         default_phone_region = "DE";
         trusted_proxies = [ "127.0.0.1" ];
         trusted_domains = [ nextcloudDomain ];
@@ -158,8 +160,8 @@ in
           recognize
           ;
         memories = pkgs.fetchNextcloudApp {
-          sha256 = "sha256-VMaOC+sCh84SsKjJk/pC3BwYRWRkqbCJPRgptI9dppA=";
-          url = "https://github.com/pulsejet/memories/releases/download/v7.4.1/memories.tar.gz";
+          sha256 = "sha256-BfxJDCGsiRJrZWkNJSQF3rSFm/G3zzQn7C6DCETSzw4=";
+          url = "https://github.com/pulsejet/memories/releases/download/v7.5.2/memories.tar.gz";
           license = "agpl3Only";
         };
       };
