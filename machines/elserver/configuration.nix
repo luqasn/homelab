@@ -2,10 +2,11 @@
   pkgs,
   lib,
   config,
+  self,
   ...
 }:
 let
-  secrets = import "../../secrets/git-crypt.nix";
+  secrets = import "${self}/secrets/git-crypt.nix";
   offsiteBackupHost = "192.168.178.4";
   offsiteBackupHostIpmi = "192.168.178.5";
   smartSwitchHost = "192.168.178.7";
