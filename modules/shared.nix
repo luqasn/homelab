@@ -37,7 +37,15 @@
     uid = 1000;
     openssh.authorizedKeys.keys = config.users.users.root.openssh.authorizedKeys.keys;
   };
-  services.smartd.enable = true;
+
+#  services.smartd = {
+#    enable = true;
+#    defaults.monitored = "-a -n standby,25";
+#    defaults.autodetected = "-a -n standby,25";
+##    defaults.autodetected = [
+##        "-a" "-n" "standby,25"
+##    ];
+#  };
 
   services.udev.extraRules =
     let
@@ -50,7 +58,7 @@
         ''SUBSYSTEM=="block"''
         ''KERNEL=="sd[a-z]"''
         ''ATTR{queue/rotational}=="1"''
-        ''RUN+="${pkgs.hdparm}/bin/hdparm -B 90 -S 41 /dev/%k"''
+        ''RUN+="${pkgs.hdparm}/bin/hdparm -B 90 -S 242 /dev/%k"''
       ])
     ]);
 }

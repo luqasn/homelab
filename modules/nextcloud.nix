@@ -45,11 +45,22 @@ in
       ghostscript
     ];
 
+    systemd.timers."nextcloud-cron" = {
+#      wantedBy = [ "timers.target" ];
+      timerConfig = lib.mkForce {
+        # Run only from 08:00 to 22:00, every 30 minutes
+        OnCalendar = "09..22:00/30";
+        Unit = "nextcloud-cron.service";
+#        Persistent = true;
+      };
+    };
+
     systemd.services.nextcloud-cron = {
       # required for memories
       # see https://github.com/pulsejet/memories/blob/master/docs/troubleshooting.md#issues-with-nixos
       path = [ pkgs.perl ];
     };
+
     services.nextcloud = {
       # See all options at https://memories.gallery/system-config/
       settings = {
@@ -110,6 +121,7 @@ in
         mail_sendmailmode = "pipe";
         mail_domain = "romeromail.de";
         mail_from_address = "server";
+        cache_path = "${config.datasets.nextcloud}/cache";
         # log_type = "file";
         #loglevel = 0;
         # Use persistent SQL connections.
