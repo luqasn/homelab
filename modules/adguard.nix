@@ -32,6 +32,8 @@ in
       user_rules = [
         "@@||brevo.com^$important"
         "@@||sentry-cdn.com^$important"
+        "@@||meinkonto.telekom-dienste.de^$important"
+        "@@||p5x.telekom.net^$important"
       ];
 
       dns = {

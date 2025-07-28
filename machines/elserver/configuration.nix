@@ -27,8 +27,18 @@ in
     ../../modules/monitoring.nix
     ../../modules/actual.nix
     ../../modules/adguard.nix
+    ../../modules/karakeep.nix
     ../../modules/starr
   ];
+
+    hardware.graphics = {
+      enable = true;
+      extraPackages = with pkgs; [
+        intel-media-driver # For Broadwell (2014) or newer processors. LIBVA_DRIVER_NAME=iHD
+        ];
+        };
+  systemd.services.jellyfin.environment.LIBVA_DRIVER_NAME = "iHD"; # Or "i965" if using older driver
+  environment.sessionVariables = { LIBVA_DRIVER_NAME = "iHD"; };      # Same here
 
   services.tailscale = {
     enable = true;
@@ -91,7 +101,7 @@ in
   };
 
   services.zfs.autoScrub.enable = true;
-
+  services.zfs.autoSnapshot.enable = lib.mkForce false;
 
   sops.templates."offsite-backup-on" = {
     mode = "700";
@@ -168,6 +178,7 @@ in
       TimeoutSec = 300;
       ExecStart = config.sops.templates."offsite-backup-on".path;
     };
+    restartIfChanged = false;
   };
 
   systemd.services.offsite-backup = {
@@ -188,6 +199,7 @@ in
     serviceConfig = {
       Type = "oneshot";
     };
+    restartIfChanged = false;
 
   };
 
@@ -211,6 +223,7 @@ in
       TimeoutSec = 300;
       ExecStart = config.sops.templates."offsite-backup-off".path;
     };
+    restartIfChanged = false;
   };
 
   systemd.timers.offsite-backup = {

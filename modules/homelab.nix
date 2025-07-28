@@ -37,6 +37,8 @@ in
       screen
       iotop
       zfs-autobackup
+      smartmontools
+      tmux
     ];
     services.zfs = {
       zed = {
@@ -50,7 +52,6 @@ in
     };
 
     services.smartd = {
-      enable = true;
       notifications.mail = {
         enable = true;
         sender = emailFrom;
@@ -174,9 +175,9 @@ in
       };
       accounts = {
         default = {
-          host = "smtp.sendgrid.net";
+          host = "s254.goserver.host";
           passwordeval = "cat ${config.sops.secrets.sendgrid-password.path}";
-          user = "apikey";
+          user = "web95p19";
           from = emailFrom;
         };
       };

@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 let
@@ -8,6 +9,9 @@ let
     inherit config;
     inherit lib;
   };
+  getPowerStatus = deviceId: pkgs.writeShellScript "get-power-status.sh" ''
+    ${pkgs.smartmontools}/bin/smartctl -i -d ata -n standby /dev/disk/by-id/${deviceId} &>> /tmp/test.log
+  '';
 in
 {
   services.grafana = {
@@ -41,6 +45,52 @@ in
     internal = true;
   };
 
+  services.cadvisor = {
+    enable = true;
+    extraOptions = [
+    "--housekeeping_interval=300s"
+    "--disable_metrics=advtcp,app,cpu_topology,cpuset,hugetlb,memory_numa,network,oom_event,percpu,perf_event,process,referenced_memory,resctrl,sched,tcp,udp"
+    ];
+    port = 9003;
+  };
+systemd.services."prometheus-script-exporter" = {
+#environment = {
+#SHELL = lib.getExe pkgs.bash;
+#};
+serviceConfig = {
+#      ExecStart = lib.mkForce "${lib.getExe pkgs.tmux} new-session -A -s systemd-debug";
+#      PrivateTmp = lib.mkForce false;
+#      RestrictAddressFamilies = lib.mkForce [];
+#      Type = "forking";
+#User = "root";
+    PrivateDevices = "no";
+      AmbientCapabilities = [
+        "CAP_SYS_RAWIO"
+        "CAP_SYS_ADMIN"
+      ];
+      CapabilityBoundingSet = [
+        "CAP_SYS_RAWIO"
+        "CAP_SYS_ADMIN"
+      ];
+      DevicePolicy = "closed";
+      DeviceAllow = lib.mkOverride 50 [
+        "block-blkext rw"
+        "block-sd rw"
+        "char-nvme rw"
+      ];
+      ProtectProc = "invisible";
+      ProcSubset = "pid";
+      SupplementaryGroups = [
+        "disk"
+#        "smartctl-exporter-access"
+      ];
+      SystemCallFilter = [
+        "@system-service"
+        "~@privileged"
+      ];
+    };
+    };
+
   services.prometheus = {
     enable = true;
     port = 9001;
@@ -48,13 +98,28 @@ in
       {
         node = {
           enable = true;
-          enabledCollectors = [ "systemd" ];
+#          enabledCollectors = [ "processes" "systemd" ];
+#          extraFlags = [ "--collector.systemd.unit-include='.*'" ];
           port = 9002;
         };
         systemd = {
           enable = true;
           listenAddress = "localhost";
         };
+        script = {
+            enable = true;
+            port = 9104;
+
+            extraFlags = [
+              "--config.shell"
+              "${pkgs.bash}/bin/bash"
+            ];
+            settings.scripts = [
+              { name = "power-hdd-Z140A0SCFVGG"; script = "${getPowerStatus "ata-TOSHIBA_MG08ACA16TE_Z140A0SCFVGG"}"; }
+              { name = "power-hdd-Z140A0LAFVGG"; script = "${getPowerStatus "ata-TOSHIBA_MG08ACA16TE_Z140A0LAFVGG"}"; }
+            ];
+        };
+
       }
       (lib.optionalAttrs (config.boot.supportedFilesystems.zfs or false) {
         zfs = {
@@ -62,13 +127,11 @@ in
           listenAddress = "localhost";
         };
       })
-      (lib.optionalAttrs config.services.smartd.enable {
-        smartctl = {
-          enable = true;
-          listenAddress = "localhost";
-          maxInterval = "5m";
-        };
-      })
+#        smartctl = {
+#          enable = true;
+#          listenAddress = "localhost";
+#          maxInterval = "5m";
+#        };
     ];
 
     checkConfig = "syntax-only";
@@ -114,6 +177,18 @@ in
           ];
         }
         {
+          job_name = "script";
+          metrics_path="/probe";
+          params={
+            pattern=[".*"];
+          };
+          static_configs = [
+            {
+              targets = [ "127.0.0.1:${toString config.services.prometheus.exporters.script.port}" ];
+            }
+          ];
+        }
+        {
           job_name = "homeassistant";
           metrics_path = "/api/prometheus";
           bearer_token_file = config.sops.secrets.homeassistant-access-token.path;
@@ -131,6 +206,15 @@ in
             }
           ];
         }
+        {
+                    job_name = "cadvisor";
+                    params = {
+                      max_age = [ "1s" ];
+                    };
+                    static_configs = [
+                      { targets = [ "127.0.0.1:${toString config.services.cadvisor.port}" ]; }
+                    ];
+                  }
       ]
       ++ lib.optionals config.services.prometheus.exporters.zfs.enable [
         {
