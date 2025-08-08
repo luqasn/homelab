@@ -12,6 +12,9 @@
     },
     "lucstation": {
       "name": "lucstation"
+    },
+    "vmtest": {
+      "name": "vmtest"
     }
   }
 }
