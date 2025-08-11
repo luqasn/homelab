@@ -115,7 +115,7 @@ in
             "reserved" = {
               options = {
                 mountpoint = "none";
-                reservation = "50G";
+                reservation = "1G";
               };
               type = "zfs_fs";
             };
