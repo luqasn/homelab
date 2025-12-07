@@ -7,6 +7,7 @@
 }:
 let
   secrets = import "${self}/secrets/git-crypt.nix";
+  vaultwardenDir = "/data/vaultwarden";
 in
 {
   imports = [
@@ -50,6 +51,7 @@ in
   nixpkgs.config.allowUnfree = true;
   mares.starr = {
     enable = true;
+    pathPrefix = "/data/starr";
     sabnzbd = {
       enable = true;
       bindAddress = "127.0.0.1";
@@ -131,6 +133,43 @@ in
     #    };
   };
 
+  systemd.services.prometheus.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/prometheus2"];
+  fileSystems."/var/lib/prometheus2" = {
+    device = "ssd/data/prometheus";
+    fsType = "zfs";
+  };
+  fileSystems."/data/grafana" = {
+    device = "ssd/data/grafana";
+    fsType = "zfs";
+  };
+  fileSystems."${vaultwardenDir}" = {
+    device = "ssd/data/vaultwarden";
+    fsType = "zfs";
+  };
+  fileSystems."/data/starr" = {
+    device = "ssd/data/starr";
+    fsType = "zfs";
+  };
+  systemd.services.influxdb2.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/influxdb2"];
+  fileSystems."/var/lib/influxdb2" = {
+    device = "ssd/data/influxdb2";
+    fsType = "zfs";
+  };
+
+
+  systemd.services.actual.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/private/actual"];
+  fileSystems."/var/lib/private/actual" = {
+    device = "ssd/data/actual";
+    fsType = "zfs";
+  };
+
+
+  systemd.services.scrutiny.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/private/scrutiny"];
+  fileSystems."/var/lib/private/scrutiny" = {
+    device = "ssd/data/scrutiny";
+    fsType = "zfs";
+  };
+
   fileSystems."/data/jellyfin" = {
     device = "ssd/data/jellyfin";
     fsType = "zfs";
@@ -161,6 +200,45 @@ in
 
   services.jellyfin.dataDir = "/data/jellyfin";
   services.jellyfin.configDir = "/data/jellyfin/config";
+
+  services.grafana.dataDir = "/data/grafana";
+
+#  services.sonarr.dataDir = "/data/starr/sonarr";
+#  services.prowlarr.dataDir = "/data/starr/prowlarr";
+#  services.radarr.dataDir = "/data/starr/radarr";
+
+  services.sabnzbd.configFile = "/data/starr/sabnzbd/sabnzbd.ini";
+  systemd.services.sabnzbd = {
+    serviceConfig = {
+      StateDirectory = lib.mkOverride 50 "/data/starr/sabnzbd";
+    };
+  };
+
+#  systemd.services.influxdb2.serviceConfig.StateDirectory = lib.mkOverride 50 "/data/influxdb2";
+
+  services.vaultwarden.config.DATA_FOLDER = vaultwardenDir;
+  systemd.services.vaultwarden = {
+    serviceConfig = {
+      StateDirectory = lib.mkOverride 50 vaultwardenDir;
+      ReadWritePaths = [vaultwardenDir];
+    };
+  };
+
+  systemd.services.karakeep.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/karakeep"];
+  fileSystems."/var/lib/karakeep" = {
+    device = "ssd/data/karakeep";
+    fsType = "zfs";
+  };
+
+
+
+#  services.prometheus.stateDir = "prometheus2";
+#  systemd.tmpfiles.rules = [
+##    "D /var/lib/${config.services.prometheus.stateDir} 0751 prometheus prometheus - -"
+##    "L+ /var/lib/${config.services.prometheus.stateDir}/data - - - - /data/prometheus/data"
+##    "L+ /var/lib/influxdb2 - - - - /data/influxdb2"
+##    "L+ /var/lib/vaultwarden - - - - /data/vaultwarden"
+#  ];
 
   #  security.acme.defaults.server = "https://acme-staging-v02.api.letsencrypt.org/directory";
 

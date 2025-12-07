@@ -409,6 +409,15 @@ let
           #          newzbin = "";
           #          priority = 0;
         };
+        "series_antu" = {
+          name = "series_antu";
+          #          order = 0;
+          #          pp = 3;
+          #          script = "None";
+          dir = "/media/Serien Antú";
+          #          newzbin = "";
+          #          priority = 0;
+        };
         "movies" = {
           name = "movies";
           #          order = 0;

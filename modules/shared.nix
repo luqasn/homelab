@@ -20,8 +20,8 @@
   # Locale service discovery and mDNS
   services.avahi.enable = true;
 
-  boot.loader.grub.configurationLimit = 5;
-  boot.loader.systemd-boot.configurationLimit = 5;
+  boot.loader.grub.configurationLimit = 10;
+  boot.loader.systemd-boot.configurationLimit = 10;
 
   # generate a random password for our user below
   # can be read using `clan secrets get <machine-name>-user-password` command
