@@ -60,29 +60,6 @@ in
       # see https://github.com/pulsejet/memories/blob/master/docs/troubleshooting.md#issues-with-nixos
       path = [ pkgs.perl ];
     };
-
-    services.nextcloud = {
-      # See all options at https://memories.gallery/system-config/
-      settings = {
-        "memories.exiftool" = lib.getExe exifToolMemories;
-        "memories.exiftool_no_local" = false;
-        # "memories.index.mode" = "3";
-        # "memories.index.path" = cfg'.photosPath;
-        # "memories.timeline.default_path" = cfg'.photosPath;
-
-        "memories.vod.disable" = false;
-        "memories.vod.vaapi" = true;
-        "memories.vod.ffmpeg" = lib.getExe pkgs.ffmpeg-headless;
-        "memories.vod.ffprobe" = "${pkgs.ffmpeg-headless}/bin/ffprobe";
-        "memories.vod.use_transpose" = true;
-        "memories.vod.use_transpose.force_sw" = true; # AMD and old Intel can't use hardware here.
-
-        "memories.db.triggers.fcu" = true;
-        "memories.readonly" = false;
-        "preview_ffmpeg_path" = lib.getExe pkgs.ffmpeg-headless;
-      };
-    };
-
     systemd.services.phpfpm-nextcloud.serviceConfig = {
       DeviceAllow = [ "/dev/dri/renderD128 rwm" ];
       PrivateDevices = lib.mkForce false;
@@ -110,6 +87,25 @@ in
       maxUploadSize = "16G";
 
       settings = {
+      # See all options at https://memories.gallery/system-config/
+        "memories.exiftool" = lib.getExe exifToolMemories;
+        "memories.exiftool_no_local" = false;
+        # "memories.index.mode" = "3";
+        # "memories.index.path" = cfg'.photosPath;
+        # "memories.timeline.default_path" = cfg'.photosPath;
+
+        "memories.vod.disable" = false;
+        "memories.vod.vaapi" = true;
+        "memories.vod.ffmpeg" = lib.getExe pkgs.ffmpeg-headless;
+        "memories.vod.ffprobe" = "${pkgs.ffmpeg-headless}/bin/ffprobe";
+        "memories.vod.use_transpose" = true;
+        "memories.vod.use_transpose.force_sw" = true; # AMD and old Intel can't use hardware here.
+
+        "memories.db.triggers.fcu" = true;
+        "memories.readonly" = false;
+        "preview_ffmpeg_path" = lib.getExe pkgs.ffmpeg-headless;
+
+
         "overwrite.cli.url" = "https://${nextcloudDomain}";
         "maintenance_window_start" = 1;
         default_phone_region = "DE";

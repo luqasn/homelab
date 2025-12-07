@@ -59,6 +59,9 @@ in
       enable = true;
     };
 
+    # fix bug
+    systemd.tmpfiles.settings."10-prowlarr" = lib.mkForce {};
+
     services.nginx.virtualHosts."prowlarr.${config.common.internalDomain}" = utils.mkVirtualHost {
       port = 9696;
       internal = true;
