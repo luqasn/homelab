@@ -67,6 +67,17 @@ in
       internal = true;
     };
 
+    fileSystems."/var/lib/prowlarr" = lib.mkIf (cfg.pathPrefix != "/var/lib") {
+      depends = [
+          cfg.pathPrefix
+      ];
+      device = "${cfg.pathPrefix}/prowlarr";
+      fsType = "none";
+      options = [
+        "bind"
+      ];
+    };
+
     systemd.services.prowlarr = {
       serviceConfig = {
         DynamicUser = lib.mkForce false;
