@@ -258,6 +258,7 @@ in
   # e.g. > cat ~/.ssh/id_ed25519.pub
   users.users.root.openssh.authorizedKeys.keys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOJLoEv6NFo+psb7VFAqeUv1PiIdFyvLGxPLT3+3uvzI luqasn@gmail.com"
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO8J4wpZiIVYgf5c/DbW0dIPKtjirE4XqVYUhUZEVxpM lucas@nixbook"
   ];
 
   programs.ssh.extraConfig = ''
