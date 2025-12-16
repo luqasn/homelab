@@ -56,15 +56,30 @@
     extraConfig = ''
       # starttls needed for authentication, so the fqdn required to match
       # the certificate
-      $config['smtp_server'] = "tls://${config.mailserver.fqdn}";
+      $config['smtp_host'] = "tls://${config.mailserver.fqdn}";
       $config['smtp_user'] = "%u";
       $config['smtp_pass'] = "%p";
+      $config['imap_host'] = "ssl://${config.mailserver.fqdn}:993";
     '';
   };
 
   services.nginx.virtualHosts.${config.services.roundcube.hostName} = {
     enableACME = false;
     useACMEHost = "${config.common.domain}";
+  };
+
+  clan.core.vars.generators.mail-password = {
+    files."mailpw".secret = true;
+    runtimeInputs = [
+      pkgs.mkpasswd
+    ];
+
+    prompts.pw.description = "the mail password";
+    prompts.pw.type = "hidden";
+
+    script = ''
+        cat "$prompts/pw" | mkpasswd -sm bcrypt > "$out/mailpw"
+    '';
   };
 
   mailserver = {
@@ -75,9 +90,6 @@
     acmeCertificateName = config.common.domain;
     fqdn = "mx.${config.common.domain}";
     domains = [ "romeromail.de" ];
-
-    mailDirectory = "/var/lib/mail/data";
-    indexDir = "/var/lib/mail/indices";
 
     fullTextSearch = {
       enable = true;
@@ -91,12 +103,9 @@
       ];
     };
 
-    # A list of all login accounts. To create the password hashes, use
-    # nix-shell -p mkpasswd --run 'mkpasswd -sm bcrypt'
     loginAccounts = {
       "lucas@romeromail.de" = {
-        hashedPasswordFile = config.sops.secrets.mailserver-password.path;
-        #        aliases = ["postmaster@example.com"];
+        hashedPasswordFile = config.clan.core.vars.generators.mail-password.files.mailpw.path;
       };
     };
 
