@@ -28,6 +28,8 @@ in
     ../../modules/karakeep.nix
     ../../modules/offsite-backup.nix
     ../../modules/starr
+    ../../modules/mailserver.nix
+    ../../modules/immich.nix
   ];
 
     hardware.graphics = {
@@ -183,6 +185,10 @@ in
     fsType = "zfs";
     options = [ "nofail" ];
   };
+  fileSystems."/data/mail" = {
+    device = "ssd/data/mail";
+    fsType = "zfs";
+  };
 
   fileSystems."/data/postgres" = {
     device = "ssd/data/postgres";
@@ -193,6 +199,18 @@ in
     device = "small/apps/mtv_dl/data";
     fsType = "zfs";
     options = [ "nofail" ];
+  };
+
+  mailserver = {
+    mailDirectory = "/data/mail/mail";
+    indexDir = "/data/mail/indices";
+  };
+
+
+  systemd.services.immich-server.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/immich"];
+  fileSystems."/var/lib/immich" = {
+    device = "small/data/immich";
+    fsType = "zfs";
   };
 
   datasets.postgres = "/data/postgres";
