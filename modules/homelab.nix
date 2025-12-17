@@ -93,7 +93,7 @@ in
         password_file_path = config.clan.core.vars.generators.postgres.files.postgres_password.path;
       in
       ''
-        $PSQL -tA <<'EOF'
+        ${pkgs.postgresql}/bin/psql -tA <<'EOF'
           DO $$
           DECLARE password TEXT;
           BEGIN

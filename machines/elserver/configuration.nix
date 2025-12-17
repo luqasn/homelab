@@ -82,7 +82,7 @@ in
   };
 
   # This is your user login name.
-  users.users.user.name = "lucas";
+#  users.users.user.name = "lucas";
 
   boot.zfs = {
     #      requestEncryptionCredentials = [ "zroot" ];
@@ -287,4 +287,5 @@ in
   # Zerotier needs one controller to accept new nodes. Once accepted
   # the controller can be offline and routing still works.
   clan.core.networking.zerotier.controller.enable = false;
+  system.stateVersion = "25.05";
 }

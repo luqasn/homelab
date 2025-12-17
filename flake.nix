@@ -8,37 +8,38 @@
   };
 
   outputs =
-    inputs@{ self, clan-core, ... }:
+    {
+      self,
+      clan-core,
+      nixpkgs,
+      ...
+    }@inputs:
     let
       # Usage see: https://docs.clan.lol
-      clan = clan-core.lib.buildClan {
+      clan = clan-core.lib.clan {
         inherit self;
-        specialArgs = {
-          inherit inputs;
-        };
-        # Ensure this is unique among all clans you want to use.
-        meta.name = "homelab";
+        imports = [ ./clan.nix ];
+        specialArgs = { inherit inputs; };
 
-        # All machines in ./machines will be imported.
-
-        # Prerequisite: boot into the installer.
-        # See: https://docs.clan.lol/getting-started/installer
-        # local> mkdir -p ./machines/machine1
-        # local> Edit ./machines/<machine>/configuration.nix to your liking.
-        machines = {
-          # You can also specify additional machines here.
-          # somemachine = {
-          #  imports = [ ./some-machine/configuration.nix ];
-          # }
-        };
+        # Customize nixpkgs
+        # pkgsForSystem =
+        #   system:
+        #   import nixpkgs {
+        #     inherit system;
+        #     config = {
+        #       allowUnfree = true;
+        #     };
+        #     overlays = [];
+        #   };
       };
     in
     {
-      inherit (clan) nixosConfigurations clanInternals;
+      inherit (clan.config) nixosConfigurations nixosModules clanInternals;
+      clan = clan.config;
       # Add the Clan cli tool to the dev shell.
       # Use "nix develop" to enter the dev shell.
       devShells =
-        clan-core.inputs.nixpkgs.lib.genAttrs
+        nixpkgs.lib.genAttrs
           [
             "x86_64-linux"
             "aarch64-linux"
