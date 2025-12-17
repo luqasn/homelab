@@ -9,12 +9,6 @@
       "name": "offsite-backup",
       "tags": [],
       "deploy": {}
-    },
-    "lucstation": {
-      "name": "lucstation"
-    },
-    "vmtest": {
-      "name": "vmtest"
     }
   }
 }

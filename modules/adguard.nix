@@ -43,6 +43,7 @@ in
           # Example config with quad9
           "9.9.9.9"
           "149.112.112.112"
+          "[/fritz.box/]192.168.1.1"
           # Uncomment the following to use a local DNS service (e.g. Unbound)
           # Additionally replace the address & port as needed
           # "127.0.0.1:5335"
