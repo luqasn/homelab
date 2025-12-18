@@ -260,6 +260,17 @@ in
 
   #  security.acme.defaults.server = "https://acme-staging-v02.api.letsencrypt.org/directory";
 
+  monitoring.disks = [
+    {
+      name = "power-hdd-Z140A0SCFVGG";
+      device = "ata-TOSHIBA_MG08ACA16TE_Z140A0SCFVGG";
+    }
+    {
+      name = "power-hdd-Z140A0LAFVGG";
+      device = "ata-TOSHIBA_MG08ACA16TE_Z140A0LAFVGG";
+    }
+  ];
+
   powerManagement.powertop.enable = true;
 
   # Set this for clan commands use ssh i.e. `clan machines update`
