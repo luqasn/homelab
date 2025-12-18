@@ -104,6 +104,14 @@ in
     fsType = "zfs";
   };
 
+
+  monitoring.disks = [
+    {
+      name = "power-hdd-Z140A19XFVGG";
+      device = "ata-TOSHIBA_MG08ACA16TE_Z140A19XFVGG";
+    }
+  ];
+
   powerManagement.powertop.enable = true;
 
   common.internalIp = "192.168.178.9";
