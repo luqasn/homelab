@@ -2,10 +2,11 @@
   pkgs,
   lib,
   config,
+  self,
   ...
 }:
 let
-  secrets = import "../../secrets/git-crypt.nix";
+  secrets = import "${self}/secrets/git-crypt.nix";
   utils = import ../../lib {
     inherit config;
     inherit lib;
@@ -20,12 +21,12 @@ in
     #    ../../modules/remote-unlock.nix
     #    ../../modules/remote-unlock-tailscale.nix
     ../../modules/homelab.nix
-    ../../modules/jellyfin.nix
+#    ../../modules/jellyfin.nix
     ../../modules/homelab-backup-keys.nix
     #    ../../modules/nextcloud.nix
     ../../modules/vaultwarden.nix
     ../../modules/monitoring.nix
-    ../../modules/starr
+#    ../../modules/starr
     #    ../../modules/starr/options.nix
     #    ../../modules/starr/sabnzbd
     #    ../../modules/homeassistant.nix
@@ -42,18 +43,18 @@ in
   datasets.postgres = "/data/postgres";
 
   nixpkgs.config.allowUnfree = true;
-  mares.starr = {
-    enable = true;
-    sabnzbd = {
-      enable = true;
-      bindAddress = "127.0.0.1";
-    };
-    radarr.enable = true;
-    prowlarr.enable = true;
-  };
+#  mares.starr = {
+#    enable = true;
+#    sabnzbd = {
+#      enable = true;
+#      bindAddress = "127.0.0.1";
+#    };
+#    radarr.enable = true;
+#    prowlarr.enable = true;
+#  };
 
   # This is your user login name.
-  users.users.user.name = "lucas";
+#  users.users.user.name = "lucas";
 
   systemd.enableEmergencyMode = false;
   disko.encryptedRoot.enable = false;
@@ -103,6 +104,14 @@ in
     fsType = "zfs";
   };
 
+
+  monitoring.disks = [
+    {
+      name = "power-hdd-Z140A19XFVGG";
+      device = "ata-TOSHIBA_MG08ACA16TE_Z140A19XFVGG";
+    }
+  ];
+
   powerManagement.powertop.enable = true;
 
   common.internalIp = "192.168.178.9";
@@ -144,4 +153,5 @@ in
   # Zerotier needs one controller to accept new nodes. Once accepted
   # the controller can be offline and routing still works.
   clan.core.networking.zerotier.controller.enable = false;
+  system.stateVersion = "25.05";
 }
