@@ -1,9 +1,11 @@
 {
   config,
   lib,
+  self,
   ...
 }:
 let
+  secrets = import "${self}/secrets/git-crypt.nix";
   utils = import ../lib {
     inherit config;
     inherit lib;
@@ -62,12 +64,12 @@ in
         };
         rewrites = [
           {
-            domain = "*.internal.stage.${config.common.domain}";
+            domain = "*.internal.${secrets.domain.stage}";
             answer = "192.168.178.9";
             enabled = true;
           }
           {
-            domain = "*.stage.${config.common.domain}";
+            domain = "*.${secrets.domain.stage}";
             answer = "192.168.178.4";
             enabled = true;
           }
