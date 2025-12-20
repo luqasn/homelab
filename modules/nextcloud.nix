@@ -76,7 +76,7 @@ in
       datadir = config.datasets.nextcloud;
 
       # Need to manually increment with every major upgrade.
-      package = pkgs.nextcloud31;
+      package = pkgs.nextcloud32;
 
       database.createLocally = false;
 
@@ -150,11 +150,11 @@ in
           previewgenerator
           notify_push
           tasks
-          recognize
+#          recognize
           ;
         memories = pkgs.fetchNextcloudApp {
-          sha256 = "sha256-BfxJDCGsiRJrZWkNJSQF3rSFm/G3zzQn7C6DCETSzw4=";
-          url = "https://github.com/pulsejet/memories/releases/download/v7.5.2/memories.tar.gz";
+          sha256 = "sha256-ORv+6XkN+qTk5bXMFKv2Mv/jU+7F12IbWE9JjV2ot9o=";
+          url = "https://github.com/pulsejet/memories/releases/download/v7.7.0/memories.tar.gz";
           license = "agpl3Only";
         };
       };
