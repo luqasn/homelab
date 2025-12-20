@@ -67,6 +67,9 @@ in
   };
 
   common.internalIp = "192.168.1.9";
+  environment.etc = {
+    "resolv.conf".text = "nameserver 9.9.9.9\n";
+  };
   networking = {
     interfaces = {
       eno1 = {
@@ -82,7 +85,7 @@ in
   };
 
   # This is your user login name.
-  users.users.user.name = "lucas";
+#  users.users.user.name = "lucas";
 
   boot.zfs = {
     #      requestEncryptionCredentials = [ "zroot" ];
@@ -260,6 +263,17 @@ in
 
   #  security.acme.defaults.server = "https://acme-staging-v02.api.letsencrypt.org/directory";
 
+  monitoring.disks = [
+    {
+      name = "power-hdd-Z140A0SCFVGG";
+      device = "ata-TOSHIBA_MG08ACA16TE_Z140A0SCFVGG";
+    }
+    {
+      name = "power-hdd-Z140A0LAFVGG";
+      device = "ata-TOSHIBA_MG08ACA16TE_Z140A0LAFVGG";
+    }
+  ];
+
   powerManagement.powertop.enable = true;
 
   # Set this for clan commands use ssh i.e. `clan machines update`
@@ -287,4 +301,5 @@ in
   # Zerotier needs one controller to accept new nodes. Once accepted
   # the controller can be offline and routing still works.
   clan.core.networking.zerotier.controller.enable = false;
+  system.stateVersion = "25.05";
 }
