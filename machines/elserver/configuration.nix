@@ -182,6 +182,11 @@ in
 
   services.freshrss.dataDir = "/data/freshrss";
 
+  fileSystems."/data/icloud" = {
+    device = "ssd/data/icloud";
+    fsType = "zfs";
+  };
+
   fileSystems."/media" = {
     device = "small/apps/mtv_dl/data";
     fsType = "zfs";
