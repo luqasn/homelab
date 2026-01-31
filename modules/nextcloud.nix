@@ -8,13 +8,6 @@ let
   collaboraDomain = "docs.${config.common.domain}";
   nextcloudDomain = "nextcloud.${config.common.domain}";
   occ = "${config.services.nextcloud.occ}/bin/nextcloud-occ";
-  exifToolMemories = pkgs.exiftool.overrideAttrs (oldAttrs: rec {
-    version = "12.70";
-    src = pkgs.fetchurl {
-      url = "https://exiftool.org/Image-ExifTool-12.70.tar.gz";
-      hash = "sha256-TLJSJEXMPj870TkExq6uraX8Wl4kmNerrSlX3LQsr/4=";
-    };
-  });
 in
 {
   options = {
@@ -87,22 +80,6 @@ in
       maxUploadSize = "16G";
 
       settings = {
-      # See all options at https://memories.gallery/system-config/
-        "memories.exiftool" = lib.getExe exifToolMemories;
-        "memories.exiftool_no_local" = false;
-        # "memories.index.mode" = "3";
-        # "memories.index.path" = cfg'.photosPath;
-        # "memories.timeline.default_path" = cfg'.photosPath;
-
-        "memories.vod.disable" = false;
-        "memories.vod.vaapi" = true;
-        "memories.vod.ffmpeg" = lib.getExe pkgs.ffmpeg-headless;
-        "memories.vod.ffprobe" = "${pkgs.ffmpeg-headless}/bin/ffprobe";
-        "memories.vod.use_transpose" = true;
-        "memories.vod.use_transpose.force_sw" = true; # AMD and old Intel can't use hardware here.
-
-        "memories.db.triggers.fcu" = true;
-        "memories.readonly" = false;
         "preview_ffmpeg_path" = lib.getExe pkgs.ffmpeg-headless;
 
 
@@ -150,13 +127,7 @@ in
           previewgenerator
           notify_push
           tasks
-#          recognize
           ;
-        memories = pkgs.fetchNextcloudApp {
-          sha256 = "sha256-ORv+6XkN+qTk5bXMFKv2Mv/jU+7F12IbWE9JjV2ot9o=";
-          url = "https://github.com/pulsejet/memories/releases/download/v7.7.0/memories.tar.gz";
-          license = "agpl3Only";
-        };
       };
       extraAppsEnable = true;
       phpOptions = {
