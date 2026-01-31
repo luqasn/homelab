@@ -31,6 +31,7 @@ in
     ../../modules/mailserver.nix
     ../../modules/immich.nix
     ../../modules/rss.nix
+    ../../modules/homeassistant.nix
   ];
 
     hardware.graphics = {
@@ -166,6 +167,11 @@ in
 
   fileSystems."/data/postgres" = {
     device = "ssd/data/postgres";
+    fsType = "zfs";
+  };
+
+  fileSystems."/data/homeassistant" = {
+    device = "ssd/data/homeassistant";
     fsType = "zfs";
   };
 
