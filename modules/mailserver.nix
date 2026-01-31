@@ -2,18 +2,11 @@
   config,
   pkgs,
   lib,
+  self,
   ...
 }:
 {
-  imports = [
-    (builtins.fetchTarball {
-      # Pick a release version you are interested in and set its hash, e.g.
-      url = "https://gitlab.com/simple-nixos-mailserver/nixos-mailserver/-/archive/6005d88bed7a5418f9772b4058a73cd0fd1e69a1/nixos-mailserver-6005d88bed7a5418f9772b4058a73cd0fd1e69a1.tar.gz";
-      # To get the sha256 of the nixos-mailserver tarball, we can use the nix-prefetch-url command:
-      # release="nixos-25.05"; nix-prefetch-url "https://gitlab.com/simple-nixos-mailserver/nixos-mailserver/-/archive/${release}/nixos-mailserver-${release}.tar.gz" --unpack
-      sha256 = "0dkcnnmbfc2hydszhr3053fglbq1bah129dspqv75nssk25zcm6s";
-    })
-  ];
+  imports = [self.inputs.nixos-mailserver.nixosModules.mailserver];
   services.postfix.enable = lib.mkForce false;
   #  services.mail.sendmailSetuidWrapper.setgid = lib.mkForce true;
 
@@ -86,7 +79,7 @@
     enable = true;
     stateVersion = 3;
     localDnsResolver = false;
-    certificateScheme = "acme";
+#    certificateScheme = "acme";
     acmeCertificateName = config.common.domain;
     fqdn = "mx.${config.common.domain}";
     domains = [ "romeromail.de" ];
