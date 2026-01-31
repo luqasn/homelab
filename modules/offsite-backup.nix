@@ -55,7 +55,6 @@ in
 
   systemd.targets.offsite-backup = {
     description = "Backup Job Target";
-    wantedBy = [ "timers.target" ];
       bindsTo = [
         "turn-on.service"
         "offsite-backup.service"
