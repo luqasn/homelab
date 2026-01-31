@@ -7,6 +7,11 @@
     inputs.nixpkgs.follows = "clan-core/nixpkgs";
   };
 
+  inputs.nixos-mailserver = {
+    url = "gitlab:simple-nixos-mailserver/nixos-mailserver";
+    inputs.nixpkgs.follows = "clan-core/nixpkgs";
+  };
+
   outputs =
     {
       self,
