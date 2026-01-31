@@ -109,33 +109,6 @@ in
   services.zfs.autoScrub.enable = true;
   services.zfs.autoSnapshot.enable = lib.mkForce false;
 
-
-  systemd = {
-    #    services = {
-    #      zfs-auto-snapshot = {
-    #        path = with pkgs; [ hostname zfs zfs-autobackup openssh ];
-    #        script = ''
-    #        zfs-autobackup -v --clear-mountpoint --destroy-missing 14d --no-holds --set-properties readonly=on --ssh-target 192.168.178.4 offsite backup/proxmox
-    #        '';
-    #        serviceConfig = {
-    #          Type = "oneshot";
-    #        };
-    #      };
-    #    };
-    #    timers = {
-    #     zfs-auto-snapshot = {
-    #        wantedBy = [ "timers.target" ];
-    #        partOf = [ "zfs-auto-snapshot.service" ];
-    #        timerConfig = {
-    #          OnCalendar = "daily";
-    ##          OnCalendar = "hourly";
-    #          Persistent = true;
-    #          Unit = "zfs-auto-snapshot.service";
-    #        };
-    #      };
-    #    };
-  };
-
   systemd.services.prometheus.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/prometheus2"];
   fileSystems."/var/lib/prometheus2" = {
     device = "ssd/data/prometheus";
