@@ -68,9 +68,6 @@ in
   };
 
   common.internalIp = "192.168.1.9";
-  environment.etc = {
-    "resolv.conf".text = "nameserver 9.9.9.9\n";
-  };
   networking = {
     interfaces = {
       eno1 = {
