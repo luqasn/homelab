@@ -245,6 +245,7 @@ in
       recommendedProxySettings = true;
       recommendedOptimisation = true;
       recommendedTlsSettings = true;
+      clientMaxBodySize = "10G";
     };
 
   };
