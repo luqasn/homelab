@@ -218,11 +218,11 @@ in
 #  services.radarr.dataDir = "/data/starr/radarr";
 
   services.sabnzbd.configFile = "/data/starr/sabnzbd/sabnzbd.ini";
-  systemd.services.sabnzbd = {
-    serviceConfig = {
-      StateDirectory = lib.mkOverride 50 "/data/starr/sabnzbd";
-    };
-  };
+#  systemd.services.sabnzbd = {
+#    serviceConfig = {
+#      StateDirectory = lib.mkOverride 50 "/data/starr/sabnzbd";
+#    };
+#  };
 
 #  systemd.services.influxdb2.serviceConfig.StateDirectory = lib.mkOverride 50 "/data/influxdb2";
 
