@@ -30,6 +30,7 @@ in
     ../../modules/starr
     ../../modules/mailserver.nix
     ../../modules/immich.nix
+    ../../modules/rss.nix
   ];
 
     hardware.graphics = {
@@ -197,6 +198,13 @@ in
     device = "ssd/data/postgres";
     fsType = "zfs";
   };
+
+  fileSystems."/data/freshrss" = {
+    device = "ssd/data/freshrss";
+    fsType = "zfs";
+  };
+
+  services.freshrss.dataDir = "/data/freshrss";
 
   fileSystems."/media" = {
     device = "small/apps/mtv_dl/data";
