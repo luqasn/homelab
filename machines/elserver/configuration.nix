@@ -303,8 +303,5 @@ in
       IdentityFile ${config.clan.core.vars.generators.ssh-key-root.files."id_ed25519".path}
   '';
 
-  # Zerotier needs one controller to accept new nodes. Once accepted
-  # the controller can be offline and routing still works.
-  clan.core.networking.zerotier.controller.enable = false;
   system.stateVersion = "25.05";
 }
