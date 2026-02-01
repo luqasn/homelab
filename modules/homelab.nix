@@ -223,12 +223,12 @@ in
             "*.${config.common.domain}"
             "*.${config.common.internalDomain}"
           ];
-          dnsProvider = "cloudflare";
-          dnsResolver = "1.1.1.1:53";
+          dnsProvider = "scaleway";
+          dnsResolver = "9.9.9.9:53";
           dnsPropagationCheck = true;
           credentialFiles = {
-            "CLOUDFLARE_EMAIL_FILE" = config.sops.secrets.cloudflare-email.path;
-            "CLOUDFLARE_DNS_API_TOKEN_FILE" = config.sops.secrets.cloudflare-dns-token.path;
+            "SCW_SECRET_KEY_FILE" = config.sops.secrets.scaleway-secret-key.path;
+            "SCW_ACCESS_KEY_FILE" = config.sops.secrets.scaleway-access-key.path;
           };
         };
       };
