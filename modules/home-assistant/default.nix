@@ -4,12 +4,15 @@
   ...
 }:
 let
-  utils = import ../lib {
+  utils = import ../../lib {
     inherit config;
     inherit lib;
   };
 in
 {
+  imports = [
+    ./mqtt.nix
+  ];
   services.home-assistant = {
     enable = true;
     # opt-out from declarative configuration management
@@ -24,6 +27,9 @@ in
               "127.0.0.1"
             ];
           };
+              "automation ui" = "!include automations.yaml";
+              "scene ui" = "!include scenes.yaml";
+              "script ui" = "!include scripts.yaml";
     };
 #    lovelaceConfig = null;
     # configure the path to your config directory

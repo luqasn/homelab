@@ -31,7 +31,7 @@ in
     ../../modules/mailserver.nix
     ../../modules/immich.nix
     ../../modules/rss.nix
-    ../../modules/homeassistant.nix
+    ../../modules/home-assistant
   ];
 
     hardware.graphics = {
