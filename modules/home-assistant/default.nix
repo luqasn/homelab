@@ -17,42 +17,64 @@ in
     enable = true;
     # opt-out from declarative configuration management
     config = {
-          http = {
-            server_host = [
-              "127.0.0.1"
-            ];
-            server_port = 8123;
-            use_x_forwarded_for = true;
-            trusted_proxies = [
-              "127.0.0.1"
-            ];
-          };
-              "automation ui" = "!include automations.yaml";
-              "scene ui" = "!include scenes.yaml";
-              "script ui" = "!include scripts.yaml";
+      http = {
+        server_host = [
+          "127.0.0.1"
+        ];
+        server_port = 8123;
+        use_x_forwarded_for = true;
+        trusted_proxies = [
+          "127.0.0.1"
+        ];
+      };
+      assist_pipeline = { };
+      backup = { };
+      config = { };
+      conversation = { };
+      energy = { };
+      history = { };
+      homeassistant_alerts = { };
+      logbook = { };
+      mobile_app = { };
+      sun = { };
+      recorder = { };
+      "automation ui" = "!include automations.yaml";
+      "scene ui" = "!include scenes.yaml";
+      "script ui" = "!include scripts.yaml";
     };
-#    lovelaceConfig = null;
+    #    lovelaceConfig = null;
     # configure the path to your config directory
     # configDir = lib.mkDefault throw "Please set `configDir` for home assistant";
     # specify list of components required by your configuration
     extraComponents = [
+      "default_config"
+      "weather"
+      "met"
+      "zeroconf"
       "esphome"
+      "fritz"
       "zha"
-              "mqtt"
-              "tasmota"
+      "mqtt"
+      "tasmota"
+      "recorder"
+      "mobile_app"
+      "history"
+      "history_stats"
+      "logbook"
+      "isal"
       # "met"
       # "radio_browser"
     ];
-            extraPackages = ps: with ps;
-              [
-              numpy
-#              hatasmota
-              pyturbojpeg
-#              paho-mqtt
-              pynacl
+    extraPackages =
+      ps: with ps; [
+        numpy
+        #              hatasmota
+        pyturbojpeg
+        #              paho-mqtt
+        pynacl
 
-              defusedxml
-              ];
+        defusedxml
+      ];
   };
 
   services.nginx.virtualHosts."homeassistant.${config.common.internalDomain}" = utils.mkVirtualHost {
