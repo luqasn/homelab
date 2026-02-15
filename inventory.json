@@ -3,7 +3,8 @@
     "elserver": {
       "name": "elserver",
       "tags": [],
-      "deploy": {}
+      "deploy": {},
+      "installedAt": 1770584938
     },
     "offsite-backup": {
       "name": "offsite-backup",
