@@ -12,11 +12,21 @@ in
 {
   imports = [
     ./mqtt.nix
+    ./esphome.nix
   ];
   services.home-assistant = {
     enable = true;
     # opt-out from declarative configuration management
     config = {
+      homeassistant = {
+        customize = {
+            "sensor.enbee_strom_total_in" = {
+                      device_class = "energy";
+                      state_class = "total_increasing";
+                      unit_of_measurement = "kWh";
+                    };
+        };
+      };
       http = {
         server_host = [
           "127.0.0.1"
@@ -38,6 +48,10 @@ in
       mobile_app = { };
       sun = { };
       recorder = { };
+      prometheus = {
+        # Handled separately.
+#        requires_auth = false;
+      };
       "automation ui" = "!include automations.yaml";
       "scene ui" = "!include scenes.yaml";
       "script ui" = "!include scripts.yaml";
@@ -62,6 +76,7 @@ in
       "history_stats"
       "logbook"
       "isal"
+      "prometheus"
       # "met"
       # "radio_browser"
     ];
@@ -74,6 +89,9 @@ in
         pynacl
 
         defusedxml
+        gtts
+        aiogithubapi
+        radios
       ];
   };
 

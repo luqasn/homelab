@@ -196,11 +196,12 @@ in
         }
         {
           job_name = "homeassistant";
+          scheme = "https";
           metrics_path = "/api/prometheus";
           bearer_token_file = config.sops.secrets.homeassistant-access-token.path;
           static_configs = [
             {
-              targets = [ "192.168.1.5:8123" ];
+              targets = [ "homeassistant.${config.common.internalDomain}:443" ];
             }
           ];
         }

@@ -16,6 +16,7 @@ let
     "watermeter"
     "tasmota"
     "home-assistant"
+    "esphome"
     "zigbee2mqtt"
   ];
 
