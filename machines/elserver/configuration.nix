@@ -83,8 +83,18 @@ in
     };
   };
 
-  # This is your user login name.
-#  users.users.user.name = "lucas";
+  clan.core.vars.generators.second-stage-encryption-key = {
+    prompts.key.description = "the key";
+    prompts.key.type = "hidden";
+    files.key = {
+        secret = true;
+        neededFor = "partitioning";
+    };
+    script = ''
+      cat "$prompts/key" > "$out/key"
+    '';
+  };
+  disko.secondStageKeyPath = config.clan.core.vars.generators.second-stage-encryption-key.files.key.path;
 
   boot.zfs = {
     #      requestEncryptionCredentials = [ "zroot" ];
@@ -273,7 +283,7 @@ in
   # You can get your disk id by running the following command on the installer:
   # Replace <IP> with the IP of the installer printed on the screen or by running the `ip addr` command.
   # ssh root@<IP> lsblk --output NAME,ID-LINK,FSTYPE,SIZE,MOUNTPOINT
-  disko.devices.disk.main.device = "/dev/disk/by-id/wwn-0x500a0751e9aa7368";
+  disko.devices.disk.main.device = "/dev/disk/by-id/nvme-Intenso_SSD_TD25060002782";
 
   # IMPORTANT! Add your SSH key here
   # e.g. > cat ~/.ssh/id_ed25519.pub
