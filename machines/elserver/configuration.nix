@@ -12,7 +12,7 @@ in
 {
   imports = [
     # contains your disk format and partitioning configuration.
-    ../../modules/disko.nix
+    ./disko.nix
     # this file is shared among all machines
     ../../modules/shared.nix
     ../../modules/remote-unlock.nix
