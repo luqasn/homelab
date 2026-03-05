@@ -49,7 +49,7 @@ let
         https_port = "";
         username = config.sops.placeholder.sabnzbd-username;
         password = config.sops.placeholder.sabnzbd-password;
-        bandwidth_max = "12M";
+        bandwidth_max = "30M";
         bandwidth_perc = "100";
         cache_limit = "978.8 M";
         web_dir = "Glitter";
