@@ -31,6 +31,7 @@ in
     ../../modules/mailserver.nix
     ../../modules/immich.nix
     ../../modules/rss.nix
+    ../../modules/tandoor.nix
     ../../modules/home-assistant
   ];
 
