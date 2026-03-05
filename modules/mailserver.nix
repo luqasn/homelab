@@ -45,7 +45,7 @@
     enable = true;
     # this is the url of the vhost, not necessarily the same as the fqdn of
     # the mailserver
-    hostName = "webmail.${config.common.domain}";
+    hostName = "webmail.${config.common.internalDomain}";
     extraConfig = ''
       # starttls needed for authentication, so the fqdn required to match
       # the certificate
@@ -59,6 +59,10 @@
   services.nginx.virtualHosts.${config.services.roundcube.hostName} = {
     enableACME = false;
     useACMEHost = "${config.common.domain}";
+
+    listenAddresses =  [
+      config.common.internalIp
+    ];
   };
 
   clan.core.vars.generators.mail-password = {
