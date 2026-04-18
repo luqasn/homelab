@@ -35,14 +35,31 @@ in
     ../../modules/home-assistant
   ];
 
+  nixpkgs.config.packageOverrides = pkgs: {
+      intel-vaapi-driver = pkgs.intel-vaapi-driver.override { enableHybridCodec = true; };
+    };
+
+    systemd.services.jellyfin.environment.LIBVA_DRIVER_NAME = "iHD"; # or i965 for older GPUs
+    environment.sessionVariables = { LIBVA_DRIVER_NAME = "iHD"; };
+
     hardware.graphics = {
       enable = true;
+
       extraPackages = with pkgs; [
-        intel-media-driver # For Broadwell (2014) or newer processors. LIBVA_DRIVER_NAME=iHD
-        ];
-        };
-  systemd.services.jellyfin.environment.LIBVA_DRIVER_NAME = "iHD"; # Or "i965" if using older driver
-  environment.sessionVariables = { LIBVA_DRIVER_NAME = "iHD"; };      # Same here
+        intel-ocl # Generic OpenCL support
+
+        # For Broadwell and newer (ca. 2014+), use with LIBVA_DRIVER_NAME=iHD:
+        intel-media-driver
+      ];
+    };
+      # for hardware acceleration
+      users.users.${config.services.jellyfin.user}.extraGroups = [
+        "video"
+        "render"
+      ];
+      systemd.services.jellyfin.serviceConfig = {
+        DeviceAllow = lib.mkForce [ "/dev/dri/renderD128" ];
+      };
 
   services.tailscale = {
     enable = true;
