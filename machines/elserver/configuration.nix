@@ -33,6 +33,7 @@ in
     ../../modules/rss.nix
     ../../modules/tandoor.nix
     ../../modules/home-assistant
+    ../../modules/kindle-todo
   ];
 
   nixpkgs.config.packageOverrides = pkgs: {
