@@ -81,7 +81,7 @@ in
     serviceConfig = {
       Type = "oneshot";
       TimeoutSec = 300;
-      ExecStart = config.sops.templates."offsite-backup-on".path;
+      ExecStart = "${pkgs.bash}/bin/bash ${config.sops.templates."offsite-backup-on".path}";
     };
     restartIfChanged = false;
   };
@@ -126,9 +126,16 @@ in
     serviceConfig = {
       Type = "oneshot";
       TimeoutSec = 300;
-      ExecStart = config.sops.templates."offsite-backup-off".path;
+      ExecStart = "${pkgs.bash}/bin/bash ${config.sops.templates."offsite-backup-off".path}";
     };
     restartIfChanged = false;
+  };
+  systemd.services.offsite-backup-start = {
+    description = "Kick off the offsite backup sequence";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "/run/current-system/sw/bin/systemctl start offsite-backup.target";
+    };
   };
 
   systemd.timers.offsite-backup = {
@@ -139,7 +146,7 @@ in
       OnCalendar = "daily";
       #          OnCalendar = "hourly";
       Persistent = true;
-      Unit = "offsite-backup.target";
+      Unit = "offsite-backup-start.service";
     };
     #      unitConfig = {
     #        Unit = "backup.target";
