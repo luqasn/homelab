@@ -13,12 +13,6 @@ let
     ${builtins.readFile ./todos-server.py}
   '';
 in {
-
-#  sops.secrets.freshrss-password = {
-#    owner = "nextcloud-todo-token";
-#    group = "nextcloud-todo-token";
-#  };
-  # ── Systemd service ───────────────────────────────────────────────────────
   systemd.services.todos-server = {
     description = "Nextcloud TODOs → Kindle PNG server";
     after       = [ "network-online.target" ];
@@ -29,7 +23,6 @@ in {
       FONT_PATH = "${pkgs.dejavu_fonts}/share/fonts/truetype/";
       NC_URL = "https://nextcloud.${config.common.domain}";
       NC_USER = "lucas";
-#      NC_PASS_FILE = config.sops.secrets.nextcloud-todo-token.path;
       PORT = "8765";
     };
 
