@@ -20,6 +20,7 @@ in
 
       extraConfig = {
         SECRET_KEY_FILE = config.sops.secrets.tandoor-secret.path;
+        GUNICORN_MEDIA = "1";
         TZ = "Europe/Berlin";
       };
     };
