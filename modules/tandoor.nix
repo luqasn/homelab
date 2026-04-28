@@ -23,8 +23,8 @@ in
         TZ = "Europe/Berlin";
       };
     };
-  services.nginx.virtualHosts."recipes.${config.common.domain}" = utils.mkVirtualHost {
+  services.nginx.virtualHosts."recipes.${config.common.internalDomain}" = utils.mkVirtualHost {
     port = tandoorHttpPort;
-    internal = false;
+    internal = true;
   };
 }

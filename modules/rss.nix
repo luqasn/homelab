@@ -1,7 +1,14 @@
 {
 config,
+lib,
 ...
 }:
+let
+  utils = import ../lib {
+    inherit config;
+    inherit lib;
+  };
+in
 {
   clan.core.vars.generators.freshrss-password = {
     files."pw".secret = true;
@@ -23,13 +30,12 @@ config,
     enable = true;
     defaultUser = "lucas";
     passwordFile = config.sops.secrets.freshrss-password.path;
-    baseUrl = "https://rss.${config.common.domain}";
-    virtualHost = "rss.${config.common.domain}";
+    baseUrl = "https://rss.${config.common.internalDomain}";
+    virtualHost = "rss.${config.common.internalDomain}";
   };
 
-  services.nginx.virtualHosts."rss.${config.common.domain}" = {
-    forceSSL = true;
-    useACMEHost = config.common.domain;
+  services.nginx.virtualHosts."rss.${config.common.internalDomain}" = utils.mkVirtualHost {
+      internal = true;
   };
 
 }
