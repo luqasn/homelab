@@ -2,7 +2,7 @@
 {
   mkVirtualHost =
     {
-      port,
+      port ? null,
       internal,
       settings ? { },
     }@args:
@@ -13,8 +13,8 @@
       listenAddresses = lib.mkIf internal [
         config.common.internalIp
       ];
-      locations."/" = {
-        proxyPass = "http://127.0.0.1:${toString port}";
-      } // settings;
+      locations."/" = (lib.optionalAttrs (port != null) {
+          proxyPass = "http://127.0.0.1:${toString port}";
+        }) // settings;
     };
 }
