@@ -27,7 +27,6 @@ in
       SMTP_FROM = "server@romeromail.de";
       SMTP_FROM_NAME = "Vaultwarden server";
       DATABASE_URL = "postgres://vaultwarden?host=/run/postgresql";
-      DISABLE_ADMIN_TOKEN = true;
       SIGNUPS_ALLOWED = false;
       INVITATIONS_ALLOWED = true;
       WEB_VAULT_ENABLED = true;
@@ -44,6 +43,7 @@ in
     useACMEHost = config.common.domain;
     locations."/" = {
       proxyPass = "http://127.0.0.1:${toString config.services.vaultwarden.config.ROCKET_PORT}";
+      proxyWebsockets = true;
     };
   };
 }
