@@ -134,6 +134,8 @@ table.ing td { padding: 0.2em 0.4em; border-bottom: 1px solid #ddd; vertical-ali
 td.amt, td.unit { white-space: nowrap; width: 5em; }
 .steps ol { padding-left: 1.2em; }
 .steps li { margin-bottom: 0.8em; }
+.step-ing { font-size: 0.9em; font-style: italic; color: #333; margin-bottom: 0.3em; }
+.step-ing strong { font-style: normal; }
 .cover { text-align: center; padding-top: 3em; }
 .cover h1 { font-size: 2em; border: none; }
 .cover .sub { font-size: 0.9em; color: #555; margin-top: 2em; }
@@ -177,16 +179,40 @@ def _ingredients_html(steps):
     )
 
 
+def _step_ingredients_html(ingredients):
+    """Format ingredients belonging to a single step."""
+    parts = []
+    for ing in ingredients:
+        food = (ing.get("food") or {})
+        unit = (ing.get("unit") or {})
+        name = food.get("name", "")
+        if not name:
+            continue
+        unit_name = unit.get("name", "")
+        amount = _fmt(ing.get("amount"))
+        note = ing.get("note", "")
+        line = f"{html_lib.escape(amount)} {html_lib.escape(unit_name)} {html_lib.escape(name)}".strip()
+        if note:
+            line += f" <em>({html_lib.escape(note)})</em>"
+        parts.append(line)
+    if not parts:
+        return ""
+    return "<p class='step-ing'><strong>Ingredients:</strong> " + "; ".join(parts) + "</p>"
+
+
 def _steps_html(steps):
     items = []
     for step in steps:
         inst = (step.get("instruction") or "").strip()
-        if not inst: continue
+        if not inst:
+            continue
         inst = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", inst)
         inst = re.sub(r"\*(.+?)\*", r"<em>\1</em>", inst)
         inst = inst.replace("\n", "<br/>")
-        items.append(f"<li>{inst}</li>")
-    if not items: return ""
+        step_ing = _step_ingredients_html(step.get("ingredients", []))
+        items.append(f"<li>{step_ing}{inst}</li>")
+    if not items:
+        return ""
     return "<div class='steps'><h2>Instructions</h2><ol>" + "".join(items) + "</ol></div>"
 
 
