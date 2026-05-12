@@ -53,6 +53,8 @@ def _get_secret(env_var, default=None):
 
     # Fallback to file
     cred_dir = os.environ.get("CREDENTIALS_DIRECTORY")
+    if not cred_dir:
+        return default
     file_path = pathlib.Path(cred_dir, env_var)
 
     if file_path.is_file():
@@ -69,7 +71,7 @@ CFG = {
     "KINDLE_PORT":       int(os.getenv("KINDLE_PORT", "22")),
     "KINDLE_USER":       os.getenv("KINDLE_USER", "root"),
     "KINDLE_PASSWORD":   _get_secret("KINDLE_PASSWORD", ""),
-    "KINDLE_KEY_PATH":   os.getenv("KINDLE_KEY_PATH", os.environ.get("CREDENTIALS_DIRECTORY") + '/KINDLE_KEY' ),
+    "KINDLE_KEY_PATH":   os.getenv("KINDLE_KEY_PATH", (os.environ.get("CREDENTIALS_DIRECTORY") or '') + '/KINDLE_KEY' ),
     "KINDLE_DOCS_PATH":  os.getenv("KINDLE_DOCS_PATH", "/mnt/us/documents/"),
     "PORT":              int(os.environ.get("PORT", "8766")),
 }
@@ -85,6 +87,24 @@ def tandoor_get(path: str, base_url: str, token: str) -> dict:
     )
     with urllib.request.urlopen(req, timeout=20) as resp:
         return json.loads(resp.read().decode())
+
+
+def list_recipes(base_url: str, token: str) -> list[dict]:
+    """Fetch all recipes from Tandoor (handles pagination)."""
+    recipes = []
+    page = 1
+    while True:
+        data = tandoor_get(f"/api/recipe/?page={page}", base_url, token)
+        results = data.get("results", [])
+        if not results and page == 1 and isinstance(data, list):
+            # Some versions return a plain list
+            recipes.extend(data)
+            break
+        recipes.extend(results)
+        if not data.get("next"):
+            break
+        page += 1
+    return recipes
 
 
 def fetch_image_bytes(image_url: str, base_url: str, token: str) -> bytes | None:
@@ -358,7 +378,21 @@ def run_job(recipe_id: int, cfg: dict, q: queue.Queue):
 
 @app.route("/")
 def index():
-    return render_template("index.html", cfg=CFG)
+    recipes = []
+    error = None
+    if CFG.get("TANDOOR_URL") and CFG.get("TANDOOR_TOKEN"):
+        try:
+            recipes = list_recipes(CFG["TANDOOR_URL"], CFG["TANDOOR_TOKEN"])
+        except Exception as e:
+            error = f"Could not fetch recipes from Tandoor: {e}"
+    else:
+        error = "Tandoor URL or token not configured."
+    return render_template(
+        "index.html",
+        recipes=recipes,
+        error=error,
+        tandoor_url=CFG.get("TANDOOR_URL", ""),
+    )
 
 
 @app.route("/config", methods=["POST"])
