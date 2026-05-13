@@ -25,7 +25,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+from flask import Flask, Response, jsonify, render_template, request, send_file, stream_with_context
 
 try:
     import paramiko
@@ -458,6 +458,29 @@ def send():
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/download")
+def download():
+    """Fetch recipe and return EPUB download."""
+    recipe_id = request.args.get("recipe_id", "").strip()
+    if not recipe_id or not recipe_id.isdigit():
+        return jsonify({"error": "Invalid recipe ID"}), 400
+    try:
+        recipe = tandoor_get(f"/api/recipe/{int(recipe_id)}/",
+                             CFG["TANDOOR_URL"], CFG["TANDOOR_TOKEN"])
+        name = recipe.get("name", "recipe")
+        safe_name = re.sub(r"[^\w\s-]", "", name).strip().replace(" ", "_")
+        filename = f"{safe_name}.epub"
+        epub_bytes = build_epub(recipe, CFG["TANDOOR_URL"], CFG["TANDOOR_TOKEN"])
+        return send_file(
+            io.BytesIO(epub_bytes),
+            mimetype="application/epub+zip",
+            as_attachment=True,
+            download_name=filename,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/preview")

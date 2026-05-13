@@ -62,6 +62,7 @@
                     </div>
                     <div class="actions">
                         <button class="btn btn-secondary" onclick="previewRecipe({{ r.id }})">Preview</button>
+                        <a class="btn btn-secondary" href="/download?recipe_id={{ r.id }}">Download EPUB</a>
                         <a class="btn btn-primary" href="/send?recipe_id={{ r.id }}">Send to Kindle</a>
                     </div>
                 </div>
