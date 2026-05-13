@@ -151,6 +151,36 @@ def _fmt(amount) -> str:
         return str(amount)
 
 
+def scale_recipe(recipe: dict, target_servings) -> dict:
+    """Scale ingredient amounts to target servings in place."""
+    if target_servings is None or target_servings == "":
+        return recipe
+    try:
+        target = float(target_servings)
+    except (ValueError, TypeError):
+        return recipe
+    original = recipe.get("servings")
+    if not original:
+        return recipe
+    try:
+        original = float(original)
+    except (ValueError, TypeError):
+        return recipe
+    if original == 0 or target == original:
+        return recipe
+    factor = target / original
+    recipe["servings"] = target
+    for step in recipe.get("steps", []):
+        for ing in step.get("ingredients", []):
+            amount = ing.get("amount")
+            if amount is not None:
+                try:
+                    ing["amount"] = float(amount) * factor
+                except (ValueError, TypeError):
+                    pass
+    return recipe
+
+
 def _ingredients_html(steps):
     rows, seen = [], set()
     for step in steps:
@@ -368,7 +398,7 @@ def upload_via_ssh(mobi_bytes: bytes, filename: str, cfg: dict, log) -> str:
 
 # ── SSE job runner ────────────────────────────────────────────────────────────
 
-def run_job(recipe_id: int, cfg: dict, q: queue.Queue):
+def run_job(recipe_id: int, servings: str, cfg: dict, q: queue.Queue):
     def log(msg: str):
         q.put({"type": "log", "msg": msg})
 
@@ -376,6 +406,7 @@ def run_job(recipe_id: int, cfg: dict, q: queue.Queue):
         log(f"Connecting to Tandoor at {cfg['TANDOOR_URL']} …")
         recipe = tandoor_get(f"/api/recipe/{recipe_id}/",
                              cfg["TANDOOR_URL"], cfg["TANDOOR_TOKEN"])
+        recipe = scale_recipe(recipe, servings)
         name = recipe.get("name", f"recipe-{recipe_id}")
         log(f"Got recipe: {name}")
 
@@ -435,6 +466,7 @@ def save_config():
 @app.route("/send", methods=["GET"])
 def send():
     recipe_id = request.args.get("recipe_id", "").strip()
+    servings = request.args.get("servings", "").strip()
     if not recipe_id or not recipe_id.isdigit():
         return Response("data: {\"type\":\"error\",\"msg\":\"Invalid recipe ID\"}\n\n",
                         mimetype="text/event-stream")
@@ -443,7 +475,7 @@ def send():
     cfg = dict(CFG)
 
     q: queue.Queue = queue.Queue()
-    t = threading.Thread(target=run_job, args=(int(recipe_id), cfg, q), daemon=True)
+    t = threading.Thread(target=run_job, args=(int(recipe_id), servings, cfg, q), daemon=True)
     t.start()
 
     def generate():
@@ -464,11 +496,13 @@ def send():
 def download():
     """Fetch recipe and return EPUB download."""
     recipe_id = request.args.get("recipe_id", "").strip()
+    servings = request.args.get("servings", "").strip()
     if not recipe_id or not recipe_id.isdigit():
         return jsonify({"error": "Invalid recipe ID"}), 400
     try:
         recipe = tandoor_get(f"/api/recipe/{int(recipe_id)}/",
                              CFG["TANDOOR_URL"], CFG["TANDOOR_TOKEN"])
+        recipe = scale_recipe(recipe, servings)
         name = recipe.get("name", "recipe")
         safe_name = re.sub(r"[^\w\s-]", "", name).strip().replace(" ", "_")
         filename = f"{safe_name}.epub"
@@ -487,11 +521,29 @@ def download():
 def preview():
     """Fetch recipe metadata for preview without sending."""
     recipe_id = request.args.get("recipe_id", "").strip()
+    servings = request.args.get("servings", "").strip()
     if not recipe_id or not recipe_id.isdigit():
         return jsonify({"error": "Invalid recipe ID"}), 400
     try:
         recipe = tandoor_get(f"/api/recipe/{int(recipe_id)}/",
                              CFG["TANDOOR_URL"], CFG["TANDOOR_TOKEN"])
+        recipe = scale_recipe(recipe, servings)
+
+        ingredients = []
+        for step in recipe.get("steps", []):
+            for ing in step.get("ingredients", []):
+                food = ing.get("food") or {}
+                unit = ing.get("unit") or {}
+                name = food.get("name", "")
+                if not name:
+                    continue
+                ingredients.append({
+                    "amount": _fmt(ing.get("amount")),
+                    "unit": unit.get("name", ""),
+                    "name": name,
+                    "note": ing.get("note", ""),
+                })
+
         return jsonify({
             "name": recipe.get("name"),
             "description": recipe.get("description"),
@@ -500,6 +552,7 @@ def preview():
             "waiting_time": recipe.get("waiting_time"),
             "image": recipe.get("image"),
             "step_count": len(recipe.get("steps", [])),
+            "ingredients": ingredients,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
