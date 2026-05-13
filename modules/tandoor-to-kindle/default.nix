@@ -7,10 +7,18 @@ let
     paramiko
   ]);
 
-  todoServer = pkgs.writeScriptBin "tandoor-to-kindle" ''
-    #!${todoPython}/bin/python3
-    ${builtins.readFile ./tandoor-to-kindle.py}
-  '';
+  todoServer = pkgs.stdenv.mkDerivation {
+    name = "tandoor-to-kindle";
+    src = ./.;
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    installPhase = ''
+      mkdir -p $out/bin $out/lib/tandoor-to-kindle/templates
+      cp $src/tandoor-to-kindle.py $out/lib/tandoor-to-kindle/app.py
+      cp $src/templates/index.html $out/lib/tandoor-to-kindle/templates/index.html
+      makeWrapper ${todoPython}/bin/python3 $out/bin/tandoor-to-kindle \
+        --add-flags "$out/lib/tandoor-to-kindle/app.py"
+    '';
+  };
 in {
   systemd.services.tandoor-to-kindle-server = {
     description = "Tandoor → Kindle MOBI server";
