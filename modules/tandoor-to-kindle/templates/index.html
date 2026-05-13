@@ -16,7 +16,8 @@
         .recipe .info { flex: 1; min-width: 0; }
         .recipe h2 { font-size: 1.1rem; margin: 0 0 0.3rem; overflow-wrap: break-word; }
         .recipe p { margin: 0; color: #555; font-size: 0.9rem; overflow-wrap: break-word; }
-        .recipe .actions { display: flex; gap: 0.5rem; flex-shrink: 0; align-items: center; }
+        .recipe .actions { display: flex; gap: 0.5rem; flex-shrink: 0; align-items: center; flex-wrap: wrap; }
+        .servings-input { width: 4em; padding: 0.35rem; border-radius: 4px; border: 1px solid #ccc; font-size: 0.85rem; }
         @media (max-width: 600px) {
             .recipe { flex-direction: column; align-items: stretch; }
             .recipe img { width: 100%; height: auto; max-height: 160px; }
@@ -60,11 +61,13 @@
                         <p>{{ r.description }}</p>
                         {% endif %}
                     </div>
-                    <div class="actions">
-                        <button class="btn btn-secondary" onclick="previewRecipe({{ r.id }})">Preview</button>
-                        <a class="btn btn-secondary" href="/download?recipe_id={{ r.id }}">Download EPUB</a>
-                        <a class="btn btn-primary" href="/send?recipe_id={{ r.id }}">Send to Kindle</a>
-                    </div>
+                    <form method="get" class="actions">
+                        <input type="hidden" name="recipe_id" value="{{ r.id }}">
+                        <input type="number" name="servings" class="servings-input" value="{{ r.servings or 1 }}" min="1" step="1" title="Portions" oninput="livePreview({{ r.id }}, this.value)">
+                        <button type="button" class="btn btn-secondary" onclick="previewRecipe({{ r.id }}, this.form.servings.value)">Preview</button>
+                        <button type="submit" formaction="/download" class="btn btn-secondary">Download EPUB</button>
+                        <button type="submit" formaction="/send" class="btn btn-primary">Send to Kindle</button>
+                    </form>
                 </div>
                 <div class="preview-box" id="preview-{{ r.id }}" style="display:none;"></div>
             </div>
@@ -81,15 +84,29 @@
     {% endif %}
 
     <script>
-    function previewRecipe(id) {
+    const previewTimers = {};
+
+    function livePreview(id, servings) {
+        const box = document.getElementById('preview-' + id);
+        if (box.style.display !== 'block') return;
+        clearTimeout(previewTimers[id]);
+        previewTimers[id] = setTimeout(() => loadPreview(id, servings), 250);
+    }
+
+    function previewRecipe(id, servings) {
         const box = document.getElementById('preview-' + id);
         if (box.style.display === 'block') {
             box.style.display = 'none';
             return;
         }
+        loadPreview(id, servings);
+    }
+
+    function loadPreview(id, servings) {
+        const box = document.getElementById('preview-' + id);
         box.style.display = 'block';
         box.textContent = 'Loading preview…';
-        fetch('/preview?recipe_id=' + id)
+        fetch('/preview?recipe_id=' + id + '&servings=' + servings)
             .then(r => r.json())
             .then(data => {
                 if (data.error) {
@@ -104,6 +121,17 @@
                 if (data.working_time) meta.push('Prep: ' + data.working_time + ' min');
                 if (data.waiting_time) meta.push('Cook: ' + data.waiting_time + ' min');
                 if (meta.length) html += '<p>' + meta.join(' · ') + '</p>';
+
+                if (data.ingredients && data.ingredients.length) {
+                    html += '<h3 style="margin: 0.8rem 0 0.3rem; font-size: 1rem;">Ingredients</h3><ul style="margin: 0; padding-left: 1.2rem;">';
+                    data.ingredients.forEach(ing => {
+                        let line = escapeHtml(ing.amount) + ' ' + escapeHtml(ing.unit) + ' ' + escapeHtml(ing.name);
+                        if (ing.note) line += ' <em>(' + escapeHtml(ing.note) + ')</em>';
+                        html += '<li>' + line + '</li>';
+                    });
+                    html += '</ul>';
+                }
+
                 html += '<p>Steps: ' + (data.step_count || 0) + '</p>';
                 box.innerHTML = html;
             })
