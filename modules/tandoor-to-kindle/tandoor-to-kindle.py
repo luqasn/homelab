@@ -257,18 +257,6 @@ def build_epub(recipe: dict, base_url: str, token: str) -> bytes:
                              media_type="text/css", content=KINDLE_CSS.encode())
     book.add_item(css_item)
 
-    # Cover image
-    image_item = None
-    img_bytes = fetch_image_bytes(recipe.get("image", ""), base_url, token)
-    if img_bytes:
-        ext = (recipe.get("image", "").rsplit(".", 1)[-1].split("?")[0].lower()) or "jpg"
-        mt = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
-              "png": "image/png", "gif": "image/gif"}.get(ext, "image/jpeg")
-        image_item = epub.EpubItem(uid="img", file_name=f"images/cover.{ext}",
-                                   media_type=mt, content=img_bytes)
-        book.add_item(image_item)
-        book.set_cover(f"images/cover.{ext}", img_bytes)
-
     def xhtml(body_content, title=""):
         return (
                 "<?xml version='1.0' encoding='utf-8'?>"
@@ -279,15 +267,6 @@ def build_epub(recipe: dict, base_url: str, token: str) -> bytes:
                 "<link rel='stylesheet' type='text/css' href='../styles/k.css'/>"
                 "</head><body>" + body_content + "</body></html>"
         ).encode()
-
-    # Cover page
-    cover_ch = epub.EpubHtml(title="Cover", file_name="cover.xhtml", lang="en")
-    cover_ch.content = xhtml(
-        f"<div class='cover'><h1>{html_lib.escape(name)}</h1>"
-        "<p class='sub'>Exported from Tandoor</p></div>", "Cover"
-    )
-    cover_ch.add_item(css_item)
-    book.add_item(cover_ch)
 
     # Recipe page
     steps = recipe.get("steps", [])
@@ -303,25 +282,16 @@ def build_epub(recipe: dict, base_url: str, token: str) -> bytes:
 
     desc = (recipe.get("description") or "").strip()
     desc_html = f"<div class='description'>{html_lib.escape(desc)}</div>" if desc else ""
-    img_html = (f"<div style='text-align:center;margin-bottom:1em;'>"
-                f"<img src='../images/{image_item.file_name.split('/')[-1]}' "
-                f"alt='{html_lib.escape(name)}' style='max-width:90%;'/></div>"
-                if image_item else "")
 
     recipe_ch = epub.EpubHtml(title=name, file_name="recipe.xhtml", lang="en")
     recipe_ch.content = xhtml(
-        f"<h1>{html_lib.escape(name)}</h1>{meta_html}{img_html}{desc_html}"
+        f"<h1>{html_lib.escape(name)}</h1>{meta_html}{desc_html}"
         + _ingredients_html(steps) + _steps_html(steps)
     )
     recipe_ch.add_item(css_item)
-    if image_item: recipe_ch.add_item(image_item)
     book.add_item(recipe_ch)
 
-    book.toc = (epub.Link("cover.xhtml", "Cover", "cover"),
-                epub.Link("recipe.xhtml", name, "recipe"))
-    book.add_item(epub.EpubNcx())
-    book.add_item(epub.EpubNav())
-    book.spine = ["nav", cover_ch, recipe_ch]
+    book.spine = [recipe_ch]
 
     buf = io.BytesIO()
     with tempfile.NamedTemporaryFile(suffix=".epub", delete=False) as tmp:

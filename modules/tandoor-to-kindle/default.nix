@@ -1,6 +1,10 @@
 { config, pkgs, lib, ... }:
 
 let
+  utils = import ../../lib {
+    inherit config;
+    inherit lib;
+  };
   todoPython = pkgs.python3.withPackages (ps: with ps; [
     flask
     ebooklib
@@ -55,6 +59,11 @@ in {
 
   # ── Firewall (open only if you need LAN access) ───────────────────────────
   networking.firewall.allowedTCPPorts = [ 8766 ];
+
+  services.nginx.virtualHosts."recipes-kindle.${config.common.internalDomain}" = utils.mkVirtualHost {
+    port = 8766;
+    internal = true;
+  };
 
   # ── Fonts ─────────────────────────────────────────────────────────────────
   fonts.packages = [ pkgs.dejavu_fonts ];
