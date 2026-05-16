@@ -5,37 +5,33 @@
   self,
   ...
 }:
-{
-  imports = [self.inputs.nixos-mailserver.nixosModules.mailserver];
-  services.postfix.enable = lib.mkForce false;
-  #  services.mail.sendmailSetuidWrapper.setgid = lib.mkForce true;
+let
+  secrets = import "${self}/secrets/git-crypt.nix";
+  mail-sync-pkg = pkgs.writeShellApplication {
+    name = "mail-sync";
 
-  #  services = {
-  #    postfix = {
-  #      enable = true;
-  #
-  #      config = {
-  #        ##
-  #        ## Relay all mail via mail.smtp2go.com:2525
-  #        ##
-  #        relayhost = "[mail.smtp2go.com]:2525";
-  #
-  #        ##
-  #        ## Enable SASL with static user/pass so that your Postfix
-  #        ## always uses these credentials for the outgoing relay.
-  #        ##
-  #        smtp_sasl_auth_enable        = "yes";
-  #        smtp_sasl_password_maps      = "static:<UserName>:<Password>";
-  #        smtp_sasl_security_options   = "noanonymous";
-  #        smtp_tIs_security_level = "may";
-  #
-  #        ##
-  #        ## Optional: concurrency limit or other items SMTP2GO suggests
-  #        ##
-  #        smtp_destination_concurrency_limit = "20";
-  #        header_size_limit = "4096000";
-  #      };
-  #    };
+    runtimeInputs = [
+      pkgs.imapsync
+    ];
+
+    text = ''
+      IMAPSYNC_PASSWORD1=$(cat "$CREDENTIALS_DIRECTORY/pw1")
+      IMAPSYNC_PASSWORD2=$(cat "$CREDENTIALS_DIRECTORY/pw2")
+      export IMAPSYNC_PASSWORD1 IMAPSYNC_PASSWORD2
+      imapsync --nolog --tmpdir /tmp \
+        --host1 ${secrets.mailhost} --port1 993 --ssl1 \
+        --user1 lucas@romeromail.de \
+        --host2 localhost --ssl2 \
+        --user2 lucas@romeromail.de \
+        --folder INBOX \
+        --folder Sent \
+        --folder Drafts
+    '';
+  };
+in
+{
+  imports = [ self.inputs.nixos-mailserver.nixosModules.mailserver ];
+  services.postfix.enable = lib.mkForce false;
 
   users.users.postfix.group = "postfix";
   users.users.postfix.isSystemUser = true;
@@ -60,7 +56,7 @@
     enableACME = false;
     useACMEHost = "${config.common.domain}";
 
-    listenAddresses =  [
+    listenAddresses = [
       config.common.internalIp
     ];
   };
@@ -75,7 +71,7 @@
     prompts.pw.type = "hidden";
 
     script = ''
-        cat "$prompts/pw" | mkpasswd -sm bcrypt > "$out/mailpw"
+      cat "$prompts/pw" | mkpasswd -sm bcrypt > "$out/mailpw"
     '';
   };
 
@@ -83,7 +79,6 @@
     enable = true;
     stateVersion = 3;
     localDnsResolver = false;
-#    certificateScheme = "acme";
     acmeCertificateName = config.common.domain;
     fqdn = "mx.${config.common.domain}";
     domains = [ "romeromail.de" ];
@@ -107,4 +102,38 @@
     };
 
   };
+
+  systemd.services.mail-sync = {
+    description = "Sync mail via imapsync";
+    after = [ "network-online.target" "sops-nix.service"];
+    wants = [ "network-online.target" "sops-nix.service"];
+
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${mail-sync-pkg}/bin/mail-sync";
+
+      LoadCredential = [
+          "pw1:${config.sops.secrets.mail-sync-pw1.path}"
+          "pw2:${config.sops.secrets.mail-sync-pw2.path}"
+      ];
+      # Hardening
+      DynamicUser           = true;
+      CapabilityBoundingSet = "";
+      PrivateDevices        = true;
+      ProtectHome           = true;
+      ProtectSystem         = "strict";
+      NoNewPrivileges       = true;
+    };
+  };
+
+  systemd.timers.mail-sync = {
+    description = "Run mail sync every day";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "daily";
+      Persistent = true;
+      Unit = "mail-sync.service";
+    };
+  };
+
 }
