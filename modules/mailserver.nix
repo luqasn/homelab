@@ -87,7 +87,7 @@ in
       enable = true;
       # index new email as they arrive
       autoIndex = true;
-      enforced = "body";
+      #enforced = "body";
       memoryLimit = 2000;
       languages = [
         "en"
