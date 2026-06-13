@@ -69,7 +69,7 @@ in
       datadir = config.datasets.nextcloud;
 
       # Need to manually increment with every major upgrade.
-      package = pkgs.nextcloud32;
+      package = pkgs.nextcloud33;
 
       database.createLocally = false;
 
@@ -81,7 +81,6 @@ in
 
       settings = {
         "preview_ffmpeg_path" = lib.getExe pkgs.ffmpeg-headless;
-
 
         "overwrite.cli.url" = "https://${nextcloudDomain}";
         "maintenance_window_start" = 1;
@@ -95,6 +94,8 @@ in
         mail_domain = "romeromail.de";
         mail_from_address = "server";
         cache_path = "${config.datasets.nextcloud}/cache";
+
+        appstoreenabled = true;
         # log_type = "file";
         #loglevel = 0;
         # Use persistent SQL connections.
@@ -223,7 +224,7 @@ in
     virtualisation.podman.enable = true;
     virtualisation.oci-containers.containers."collabora" = {
       autoStart = true;
-      image = "docker.io/collabora/code:25.04.9.2.1";
+      image = "docker.io/collabora/code:26.04.1.4.1";
       ports = [ "9980:9980/tcp" ];
       environment = {
         server_name = collaboraDomain;
@@ -271,24 +272,10 @@ in
            proxy_set_header Host $host;
         }
 
-        # main websocket
-        location ~ ^/cool/(.*)/ws$ {
+        # main websocket, download, presentation (legacy svg) and image upload
+        location ^~ /cool/ {
           proxy_pass http://127.0.0.1:9980;
-          proxy_set_header Upgrade $http_upgrade;
-          proxy_set_header Connection "Upgrade";
-          proxy_set_header Host $host;
-          proxy_read_timeout 36000s;
-        }
-
-        # download, presentation and image upload
-        location ~ ^/(c|l)ool {
-          proxy_pass http://127.0.0.1:9980;
-          proxy_set_header Host $host;
-        }
-
-        # Admin Console websocket
-        location ^~ /cool/adminws {
-          proxy_pass http://127.0.0.1:9980;
+          proxy_http_version 1.1;
           proxy_set_header Upgrade $http_upgrade;
           proxy_set_header Connection "Upgrade";
           proxy_set_header Host $host;
