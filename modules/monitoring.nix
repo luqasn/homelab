@@ -37,9 +37,20 @@ in
     description = "List of disks to monitor via the script exporter.";
   };
   config = {
+    clan.core.vars.generators."grafana-secret-key" = {
+      files."secret-key".owner = "grafana";
+      runtimeInputs = [ pkgs.openssl ];
+      script = ''
+        openssl rand -hex 32 > "$out/secret-key"
+      '';
+    };
+
     services.grafana = {
       enable = true;
       settings = {
+        security.secret_key = "$__file{${
+          config.clan.core.vars.generators."grafana-secret-key".files."secret-key".path
+        }}";
         server = {
           domain = "grafana.${config.common.internalDomain}";
           port = 3000;
