@@ -105,24 +105,30 @@ in
 
   systemd.services.mail-sync = {
     description = "Sync mail via imapsync";
-    after = [ "network-online.target" "sops-nix.service"];
-    wants = [ "network-online.target" "sops-nix.service"];
+    after = [
+      "network-online.target"
+      "sops-nix.service"
+    ];
+    wants = [
+      "network-online.target"
+      "sops-nix.service"
+    ];
 
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${mail-sync-pkg}/bin/mail-sync";
 
       LoadCredential = [
-          "pw1:${config.sops.secrets.mail-sync-pw1.path}"
-          "pw2:${config.sops.secrets.mail-sync-pw2.path}"
+        "pw1:${config.sops.secrets.mail-sync-pw1.path}"
+        "pw2:${config.sops.secrets.mail-sync-pw2.path}"
       ];
       # Hardening
-      DynamicUser           = true;
+      DynamicUser = true;
       CapabilityBoundingSet = "";
-      PrivateDevices        = true;
-      ProtectHome           = true;
-      ProtectSystem         = "strict";
-      NoNewPrivileges       = true;
+      PrivateDevices = true;
+      ProtectHome = true;
+      ProtectSystem = "strict";
+      NoNewPrivileges = true;
     };
   };
 
