@@ -39,12 +39,12 @@ in
     ];
 
     systemd.timers."nextcloud-cron" = {
-#      wantedBy = [ "timers.target" ];
+      #      wantedBy = [ "timers.target" ];
       timerConfig = lib.mkForce {
         # Run only from 08:00 to 22:00, every 30 minutes
         OnCalendar = "09..22:00/30";
         Unit = "nextcloud-cron.service";
-#        Persistent = true;
+        #        Persistent = true;
       };
     };
 

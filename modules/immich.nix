@@ -16,6 +16,24 @@ in
     enable = true;
     port = 2283;
     accelerationDevices = null;
+
+    settings = {
+      server.externalDomain = "https://${immichDomain}";
+
+      notifications.smtp = {
+        enabled = true;
+        from = config.programs.msmtp.accounts.default.from;
+        replyTo = "";
+        transport = {
+          ignoreCert = false;
+          host = config.programs.msmtp.accounts.default.host;
+          port = config.programs.msmtp.defaults.port;
+          secure = true;
+          username = config.programs.msmtp.accounts.default.user;
+          password._secret = config.sops.secrets.sendgrid-password.path;
+        };
+      };
+    };
   };
 
 
