@@ -21,6 +21,7 @@ in
       extraConfig = {
         SECRET_KEY_FILE = config.sops.secrets.tandoor-secret.path;
         GUNICORN_MEDIA = "1";
+        ALLOWED_HOSTS = "recipes.${config.common.internalDomain}";
         TZ = "Europe/Berlin";
       };
     };
