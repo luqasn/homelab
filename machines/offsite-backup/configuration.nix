@@ -111,6 +111,12 @@ in
     }
   ];
 
+  # Expose the zfs exporter on the LAN so elserver's Prometheus can scrape
+  # offsite-backup's snapshot timestamps directly (see modules/offsite-backup.nix
+  # on elserver). Overrides the `localhost` default from monitoring.nix.
+  # Firewall is disabled (modules/homelab.nix), so no port opening needed.
+  services.prometheus.exporters.zfs.listenAddress = lib.mkForce "0.0.0.0";
+
   powerManagement.powertop.enable = true;
 
   common.internalIp = "192.168.178.9";
@@ -149,8 +155,5 @@ in
     config.clan.core.vars.generators.ssh-key-root.files."id_ed25519.pub".path
   ];
 
-  # Zerotier needs one controller to accept new nodes. Once accepted
-  # the controller can be offline and routing still works.
-  clan.core.networking.zerotier.controller.enable = false;
   system.stateVersion = "25.05";
 }
