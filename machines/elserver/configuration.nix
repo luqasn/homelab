@@ -140,7 +140,7 @@ in
   services.zfs.autoScrub.enable = true;
   services.zfs.autoSnapshot.enable = lib.mkForce false;
 
-  systemd.services.prometheus.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/prometheus2"];
+  systemd.services.prometheus.unitConfig.ConditionPathIsMountPoint = ["/var/lib/prometheus2"];
   fileSystems."/var/lib/prometheus2" = {
     device = "ssd/data/prometheus";
     fsType = "zfs";
@@ -157,21 +157,21 @@ in
     device = "ssd/data/starr";
     fsType = "zfs";
   };
-  systemd.services.influxdb2.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/influxdb2"];
+  systemd.services.influxdb2.unitConfig.ConditionPathIsMountPoint = ["/var/lib/influxdb2"];
   fileSystems."/var/lib/influxdb2" = {
     device = "ssd/data/influxdb2";
     fsType = "zfs";
   };
 
 
-  systemd.services.actual.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/private/actual"];
+  systemd.services.actual.unitConfig.ConditionPathIsMountPoint = ["/var/lib/private/actual"];
   fileSystems."/var/lib/private/actual" = {
     device = "ssd/data/actual";
     fsType = "zfs";
   };
 
 
-  systemd.services.scrutiny.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/private/scrutiny"];
+  systemd.services.scrutiny.unitConfig.ConditionPathIsMountPoint = ["/var/lib/private/scrutiny"];
   fileSystems."/var/lib/private/scrutiny" = {
     device = "ssd/data/scrutiny";
     fsType = "zfs";
@@ -229,7 +229,7 @@ in
   };
 
 
-  systemd.services.immich-server.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/immich"];
+  systemd.services.immich-server.unitConfig.ConditionPathIsMountPoint = ["/var/lib/immich"];
   fileSystems."/var/lib/immich" = {
     device = "small/data/immich";
     fsType = "zfs";
@@ -264,7 +264,7 @@ in
     };
   };
 
-  systemd.services.karakeep.serviceConfig.ConditionPathIsMountPoint = ["/var/lib/karakeep"];
+  systemd.services.karakeep.unitConfig.ConditionPathIsMountPoint = ["/var/lib/karakeep"];
   fileSystems."/var/lib/karakeep" = {
     device = "ssd/data/karakeep";
     fsType = "zfs";

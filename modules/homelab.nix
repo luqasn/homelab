@@ -103,7 +103,7 @@ in
         EOF
       '';
 
-    systemd.services.postgresql.serviceConfig.ConditionPathIsMountPoint = [
+    systemd.services.postgresql.unitConfig.ConditionPathIsMountPoint = [
       config.datasets.postgres
     ];
 
