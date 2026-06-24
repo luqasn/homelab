@@ -27,6 +27,7 @@ in
     ../../modules/adguard.nix
     ../../modules/karakeep.nix
     ../../modules/offsite-backup.nix
+    ../../modules/odysseus.nix
     ../../modules/starr
     ../../modules/mailserver.nix
     ../../modules/immich.nix
@@ -267,6 +268,17 @@ in
   systemd.services.karakeep.unitConfig.ConditionPathIsMountPoint = ["/var/lib/karakeep"];
   fileSystems."/var/lib/karakeep" = {
     device = "ssd/data/karakeep";
+    fsType = "zfs";
+  };
+
+  # Odysseus persistent data (DB, uploads, ChromaDB vectors, generated images,
+  # etc.) on its own ZFS dataset. Both the app and the bundled ChromaDB service
+  # wait for the mount before starting so they never write into the empty
+  # /var/lib root. dataDir is the module default /var/lib/odysseus.
+  systemd.services.odysseus.unitConfig.ConditionPathIsMountPoint = ["/var/lib/odysseus"];
+  systemd.services.odysseus-chroma.unitConfig.ConditionPathIsMountPoint = ["/var/lib/odysseus"];
+  fileSystems."/var/lib/odysseus" = {
+    device = "ssd/data/odysseus";
     fsType = "zfs";
   };
 
