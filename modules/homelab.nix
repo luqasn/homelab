@@ -214,7 +214,7 @@ in
       acceptTerms = true;
       defaults = {
         email = "lucas@romeromail.de";
-        # server = "https://acme-staging-v02.api.letsencrypt.org/directory";
+#        server = "https://acme-staging-v02.api.letsencrypt.org/directory";
       };
       certs = {
         "${config.common.domain}" = {
@@ -222,6 +222,13 @@ in
           extraDomainNames = [
             "*.${config.common.domain}"
             "*.${config.common.internalDomain}"
+            # Coder subdomain-based workspace apps (CODER_WILDCARD_ACCESS_URL).
+            # See modules/coder/server.nix (coder.server.wildcardDomain) and the
+            # nginx serverAlias that serves it. The wildcard is a child of the
+            # dashboard host coder.<internalDomain> (Coder's canonical topology),
+            # so the dashboard itself is covered by *.${config.common.internalDomain}
+            # above while apps need this dedicated *.coder.<internalDomain> SAN.
+            "*.coder.${config.common.internalDomain}"
           ];
           dnsProvider = "scaleway";
           dnsResolver = "9.9.9.9:53";

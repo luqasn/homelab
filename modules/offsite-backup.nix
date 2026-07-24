@@ -53,6 +53,19 @@ in
     content = ''
       #!/usr/bin/env bash
       set -euo pipefail
+      # Don't power off while Coder workspaces are running on offsite-backup.
+      # This makes turn-off safe to call from both the nightly backup target
+      # and the Coder autostop timer (modules/coder/power.nix): if a workspace
+      # is up, skip — the autostop timer will shut the host down once all
+      # workspaces go idle. A failed SSH (host already down / unreachable)
+      # falls through to the IPMI/switch commands below, which are idempotent.
+      active_vms=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+        root@${offsiteBackupHost} \
+        "systemctl list-units --type=service --state=active 'microvm@*' --no-legend --no-pager 2>/dev/null | grep -c . || true" 2>/dev/null || echo 0)
+      if [ "$active_vms" -gt 0 ]; then
+        echo "Coder workspaces active on offsite-backup; skipping power-off."
+        exit 0
+      fi
       ipmitool -H ${offsiteBackupHostIpmi} -U ${config.sops.placeholder.ipmi-username} -P ${config.sops.placeholder.ipmi-password} power soft
       echo "Waiting for shutdown..."
       while true; do
@@ -140,6 +153,8 @@ in
       curl
       ipmitool
       bash
+      openssh
+      gnugrep
     ];
     description = "Turn off backup socket";
     partOf = [ "offsite-backup.target" ];
