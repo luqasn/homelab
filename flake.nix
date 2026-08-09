@@ -1,5 +1,5 @@
 {
-  inputs.clan-core.url = "https://git.clan.lol/clan/clan-core/archive/main.tar.gz";
+  inputs.clan-core.url = "https://git.clan.lol/clan/clan-core/archive/26.05.tar.gz";
   inputs.nixpkgs.follows = "clan-core/nixpkgs";
 
   inputs.hoopsnake = {
@@ -48,11 +48,17 @@
     url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
+  inputs.nixpkgs-immich-kiosk = {
+    url = "github:NixOS/nixpkgs/389ed85304b281ca7f306cf8a1eb4378651ca44e";
+  };
+
   outputs =
     {
       self,
       clan-core,
       nixpkgs,
+      nixpkgs-coder,
+      nixpkgs-immich-kiosk,
       ...
     }@inputs:
     let

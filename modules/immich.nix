@@ -1,6 +1,7 @@
 {
   config,
   pkgs,
+  inputs,
   lib,
   ...
 }:
@@ -9,6 +10,9 @@ let
   utils = import ../lib {
     inherit config;
     inherit lib;
+  };
+  pkgs-immich-kiosk = import inputs.nixpkgs-immich-kiosk {
+    inherit system;
   };
 in
 {
@@ -36,76 +40,6 @@ in
     };
   };
 
-
-     nixpkgs.overlays = [
-       (final: prev: {
-immich-kiosk = let
-    version = "0.33.0";
-    src = prev.fetchFromGitHub {
-      owner = "damongolding";
-      repo = "immich-kiosk";
-      tag = "v${version}";
-      hash = "sha256-VIJYgEEiW+JTKkWSY+kaftD08xljZLssYX5/R+thMEc=";
-    };
-
-    bunDeps = prev.stdenvNoCC.mkDerivation {
-      pname = "immich-kiosk-bun-deps";
-      inherit version src;
-      sourceRoot = "${src.name}/frontend";
-      impureEnvVars = prev.lib.fetchers.proxyImpureEnvVars;
-      nativeBuildInputs = [ prev.bun ];
-
-      buildInputs = [ prev.nodejs-slim_latest ];
-      dontConfigure = true;
-      buildPhase = ''
-        bun install --no-progress --frozen-lockfile
-      '';
-      installPhase = ''
-      mkdir -p $out/node_modules
-      cp -R ./node_modules $out
-      '';
-      outputHash = "sha256-1enY+kSfkKvF0vAzWgOED2VXUVAc38KfhVKCYuPten8=";
-      outputHashAlgo = "sha256";
-      outputHashMode = "recursive";
-    };
-  in (prev.immich-kiosk.override {
-    buildGoModule = prev.buildGoModule.override {
-      go = prev.go_1_26;
-    };
-  }).overrideAttrs (oldAttrs: {
-    inherit version src;
-    vendorHash = "sha256-OHmsTkMX5+XZrnNlkZJNtCwxQ2eBFFKJpAKOs+JytZA=";
-
-    pnpmDeps = null;
-    pnpmRoot = null;
-
-    nativeBuildInputs = builtins.filter (drv:
-      drv != prev.pnpmConfigHook && drv != prev.pnpm_9
-    ) (oldAttrs.nativeBuildInputs or []) ++ [
-      prev.makeBinaryWrapper
-    ];
-    buildInputs = [ prev.bun prev.typescript ];
-
-    preBuild = ''
-      go run github.com/a-h/templ/cmd/templ generate
-        export PATH=${lib.makeBinPath [ prev.bun ]}:$PATH
-        pushd frontend
-        cp -R ${bunDeps}/node_modules node_modules
-        patchShebangs ./node_modules
-        bun run build
-        popd
-    '';
-
-    ldflags = [
-      "-s"
-      "-w"
-      "-X main.version=${version}"
-    ];
-  });
-
-       })
-     ];
-
   users.users.immich.extraGroups = [
     "video"
     "render"
@@ -129,6 +63,7 @@ immich-kiosk = let
 
   services.immich-kiosk = {
     enable = true;
+    package = pkgs-immich-kiosk.immich-kiosk;
     settings = {
       immich_url = "http://localhost:${toString config.services.immich.port}";
       immich_api_key._secret = config.sops.secrets.immich-api-key.path;
