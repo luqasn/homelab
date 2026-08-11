@@ -35,6 +35,7 @@ in
     ../../modules/home-assistant
     ../../modules/kindle-todo
     ../../modules/tandoor-to-kindle
+    ../../modules/forgejo.nix
     ../../modules/coder/server.nix
     ../../modules/coder/power.nix
     # microvm.nix host: elserver can ALSO run Coder workspace VMs (not just
@@ -242,6 +243,11 @@ in
   };
 
   services.freshrss.dataDir = "/data/freshrss";
+
+  fileSystems."/data/forgejo" = {
+    device = "ssd/data/forgejo";
+    fsType = "zfs";
+  };
 
   fileSystems."/data/icloud" = {
     device = "ssd/data/icloud";
