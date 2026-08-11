@@ -35,6 +35,14 @@ in
     ../../modules/home-assistant
     ../../modules/kindle-todo
     ../../modules/tandoor-to-kindle
+    ../../modules/coder/server.nix
+    ../../modules/coder/power.nix
+    # microvm.nix host: elserver can ALSO run Coder workspace VMs (not just
+    # offsite-backup). The template's `microvm_host` coder_parameter lets a
+    # user pick per workspace; the embedded provisioner (running here) SSHes
+    # to the chosen host — localhost for elserver, offsite-backup's address
+    # otherwise. Requires VT-x/AMD-V enabled in elserver's firmware (KVM).
+    ../../modules/coder/microvm-host.nix
   ];
 
   nixpkgs.config.packageOverrides = pkgs: {
@@ -68,6 +76,29 @@ in
     authKeyFile = pkgs.writeText "ts-authkey" "tskey-auth-ky3Vdtm9i721CNTRL-5EAGkLHfsX24fKaY4k7PY22UTHrb3KQrZ";
     interfaceName = "userspace-networking";
   };
+
+  # Coder workspace server (web UI + provisioner). Workspaces themselves run
+  # as microvm.nix VMs — on offsite-backup (modules/coder/microvm-host.nix) and
+  # optionally on elserver itself (same module imported above). The per-workspace
+  # `microvm_host` template parameter selects the host; default offsite-backup.
+  coder.server.enable = true;
+
+  # elserver as an alternate microvm host. `eno1` is elserver's uplink (the
+  # LAN workspace VMs NAT out through). microvm-host.nix also auto-authorises
+  # the shared provisioner key on root here, so the embedded provisioner
+  # (running here as the `coder` user) can SSH to elserver via 127.0.0.1 to
+  # build VMs. Requires /dev/kvm — ensure VT-x/AMD-V is enabled in firmware.
+  # NB: elserver runs many homelab services; workspace VMs share its RAM/CPU.
+  coder.microvm = {
+    enable = true;
+    externalInterface = "eno1";
+  };
+
+  # Resolve offsite-backup by hostname so the Coder provisioner can SSH to it
+  # (CODER_VM_HOST=offsite-backup) without relying on DNS. IP matches
+  # offsiteBackupHost in modules/offsite-backup.nix. (For elserver-hosted
+  # workspaces the provisioner SSHes to 127.0.0.1, so no hosts entry needed.)
+  networking.hosts."192.168.178.4" = [ "offsite-backup" ];
 
   # homelab settings
   common.domain = secrets.domain.prod;

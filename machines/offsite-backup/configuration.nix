@@ -26,11 +26,31 @@ in
     #    ../../modules/nextcloud.nix
     ../../modules/vaultwarden.nix
     ../../modules/monitoring.nix
+    ../../modules/coder/microvm-host.nix
 #    ../../modules/starr
     #    ../../modules/starr/options.nix
     #    ../../modules/starr/sabnzbd
     #    ../../modules/homeassistant.nix
   ];
+
+  # Coder microvm.nix host: workspace VMs run here, managed by the Coder
+  # server on elserver. The provisioner SSHes in as root using the shared
+  # `coder-provisioner-key` var (provisioner-key.nix) — its public key is
+  # added to root's authorized_keys automatically by microvm-host.nix, so no
+  # manual key paste is needed. Deploy elserver first to generate the keypair.
+  coder.microvm = {
+    enable = true;
+    externalInterface = "eno1";
+  };
+
+  # Resolve the Coder server hostname to elserver's internal IP so
+  # offsite-backup itself (and workspace VMs, via the template's own /etc/hosts
+  # entry) can phone home. The Coder server runs on elserver, which uses
+  # secrets.domain.prod, so the hostname is coder.internal.<prod-domain>
+  # (coder.${config.common.internalDomain} on elserver). elserver's LAN IP is
+  # routable from offsite-backup. Keep in sync with common.internalIp in
+  # machines/elserver/configuration.nix.
+  networking.hosts."192.168.1.9" = [ "coder.internal.${secrets.domain.prod}" ];
 
   services.tailscale = {
     enable = true;
