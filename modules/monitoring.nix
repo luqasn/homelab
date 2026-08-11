@@ -36,6 +36,17 @@ in
     default = [ ];
     description = "List of disks to monitor via the script exporter.";
   };
+  options.monitoring.scrapeOffsiteBackup = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    description = ''
+      Host/IP of offsite-backup's zfs exporter to scrape from this host's
+      Prometheus. Set on the machine running the offsite backup job
+      (elserver) only, so offsite-backup does not scrape itself. null disables
+      the scrape job. The zfs exporter port is taken from
+      `services.prometheus.exporters.zfs.port`.
+    '';
+  };
   config = {
     clan.core.vars.generators."grafana-secret-key" = {
       files."secret-key".owner = "grafana";
@@ -155,6 +166,20 @@ in
           zfs = {
             enable = true;
             listenAddress = "localhost";
+            # The `dataset-snapshot` collector is disabled by default in
+            # pdf/zfs_exporter (it can be expensive on systems with many
+            # snapshots). Enable it and add `creation` to its property set so
+            # per-snapshot creation timestamps are exposed natively as
+            #   zfs_dataset_creation_timestamp{name="...",pool="...",type="snapshot"}
+            # which drives the offsite-backup freshness/lag rules in
+            # modules/offsite-backup.nix. `creation` is not in the default
+            # snapshot props (logicalused,referenced,used,written), so it must
+            # be appended explicitly or the creation metric won't exist for
+            # snapshots at all.
+            extraFlags = [
+              "--collector.dataset-snapshot"
+              "--properties.dataset-snapshot=logicalused,referenced,used,written,creation"
+            ];
           };
         })
         #        smartctl = {
@@ -251,6 +276,7 @@ in
       ++ lib.optionals config.services.prometheus.exporters.zfs.enable [
         {
           job_name = "zfs";
+          scrape_timeout = "30s";
           static_configs = [
             { targets = [ "localhost:${toString config.services.prometheus.exporters.zfs.port}" ]; }
           ];
@@ -263,7 +289,29 @@ in
             { targets = [ "localhost:${toString config.services.prometheus.exporters.smartctl.port}" ]; }
           ];
         }
-      ];
+      ]
+      ++ lib.optional (config.monitoring.scrapeOffsiteBackup != null) {
+        # Scrape offsite-backup's zfs exporter (snapshot collector) so its
+        # snapshot timestamps are available for backup-freshness rules. Only
+        # enabled on elserver via `monitoring.scrapeOffsiteBackup` to avoid
+        # offsite-backup scraping itself.
+        #
+        # offsite-backup is powered off ~23h/day and only briefly up during the
+        # backup window. Instead of scraping frequently, `offsite-backup.service`
+        # (on elserver) sleeps for 5 minutes after the replication finishes so
+        # the host stays up long enough for a few scrapes at the default 60s
+        # interval before it powers off. Failed scrapes while it's off are
+        # harmless (up=0); the freshness rules use last_over_time(...[48h]) to
+        # retain the last good sample for 48h.
+        job_name = "offsite-backup-zfs";
+        static_configs = [
+          {
+            targets = [
+              "${config.monitoring.scrapeOffsiteBackup}:${toString config.services.prometheus.exporters.zfs.port}"
+            ];
+          }
+        ];
+      };
     };
 
     services.nginx.virtualHosts."prometheus.${config.common.internalDomain}" = utils.mkVirtualHost {
