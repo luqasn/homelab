@@ -114,6 +114,7 @@ in
         "nextcloud"
         "oc_nextcloud"
         "vaultwarden"
+        "forgejo"
       ];
       ensureUsers = [
         {
@@ -126,6 +127,10 @@ in
         }
         {
           name = "vaultwarden";
+          ensureDBOwnership = true;
+        }
+        {
+          name = "forgejo";
           ensureDBOwnership = true;
         }
       ];
