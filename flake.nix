@@ -12,6 +12,16 @@
     inputs.nixpkgs.follows = "clan-core/nixpkgs";
   };
 
+  # Odysseus AI workspace. Pinned to the PR branch that adds the NixOS
+  # service module (https://github.com/pewdiepie-archdaemon/odysseus/pull/2568).
+  # The module's `package` default builds odysseus from its own source via the
+  # host system's pkgs, so following clan-core/nixpkgs here is safe and avoids
+  # pulling a second nixpkgs copy.
+  inputs.odysseus = {
+    url = "github:ToyVo/odysseus/b2a99f5b199c33c1ac3aab21dcadcbb0f949a360";
+    inputs.nixpkgs.follows = "clan-core/nixpkgs";
+  };
+
   outputs =
     {
       self,
