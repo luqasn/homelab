@@ -24,7 +24,6 @@ in
     ../../modules/homelab-backup-keys.nix
     ../../modules/monitoring.nix
     ../../modules/actual.nix
-    ../../modules/adguard.nix
     ../../modules/karakeep.nix
     ../../modules/offsite-backup.nix
     ../../modules/odysseus.nix
