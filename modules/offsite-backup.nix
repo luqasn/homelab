@@ -109,7 +109,7 @@ in
     serviceConfig = {
       Type = "oneshot";
       TimeoutSec = 300;
-      ExecStart = config.sops.templates."offsite-backup-on".path;
+      ExecStart = "${pkgs.bash}/bin/bash ${config.sops.templates."offsite-backup-on".path}";
     };
     restartIfChanged = false;
   };
