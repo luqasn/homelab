@@ -1,8 +1,8 @@
-  {
+{
   config,
   pkgs,
   ...
-  } :
+}:
 let
   offsiteBackupHost = "192.168.178.4";
   offsiteBackupHostIpmi = "192.168.178.5";
@@ -17,7 +17,7 @@ let
   # zfs exporter port (offsite-backup listens on 0.0.0.0, same default port):
   #   curl -s <offsiteBackupHost>:9134/metrics | grep -iE 'zfs_dataset_creation_timestamp'
 in
-  {
+{
   # This module is imported by elserver only. Tell monitoring.nix (imported by
   # both elserver and offsite-backup) to scrape offsite-backup's zfs exporter
   # from elserver's Prometheus, so the scrape config lives next to the others
@@ -83,11 +83,11 @@ in
 
   systemd.targets.offsite-backup = {
     description = "Backup Job Target";
-      bindsTo = [
-        "turn-on.service"
-        "offsite-backup.service"
-        "turn-off.service"
-      ];
+    bindsTo = [
+      "turn-on.service"
+      "offsite-backup.service"
+      "turn-off.service"
+    ];
   };
 
   systemd.services.turn-on = {
@@ -140,9 +140,6 @@ in
     '';
     serviceConfig = {
       Type = "oneshot";
-      # 5m scrape window plus replication headroom. The default 90s would kill
-      # the sleep before Prometheus finishes scraping.
-      TimeoutSec = 600;
     };
     restartIfChanged = false;
 
@@ -230,7 +227,7 @@ in
             }
             {
               record = "offsite_backup_last_snapshot_age_seconds";
-              expr = ''time() - offsite_backup_last_snapshot_timestamp_seconds'';
+              expr = "time() - offsite_backup_last_snapshot_timestamp_seconds";
             }
             # Newest offsite-... snapshot per dataset on elserver (native local
             # `zfs` job). Same dataset-label extraction as above. Used as the
@@ -268,14 +265,14 @@ in
             }
             {
               alert = "OffsiteBackupStale";
-              expr = ''offsite_backup_last_snapshot_age_seconds > 48 * 3600'';
+              expr = "offsite_backup_last_snapshot_age_seconds > 48 * 3600";
               for = "10m";
               labels.severity = "warning";
               annotations.summary = "Offsite backup of dataset {{ $labels.dataset }} is older than 48h";
             }
             {
               alert = "OffsiteBackupLagging";
-              expr = ''offsite_backup_lag_seconds > 24 * 3600'';
+              expr = "offsite_backup_lag_seconds > 24 * 3600";
               for = "10m";
               labels.severity = "warning";
               annotations.summary = "Offsite backup of dataset {{ $labels.dataset }} is lagging behind elserver by >24h";
@@ -289,7 +286,7 @@ in
   systemd.timers.offsite-backup = {
     description = "Run the full offsite-backup sequence";
     wantedBy = [ "timers.target" ];
-      wants = ["offsite-backup.target"];
+    wants = [ "offsite-backup.target" ];
     timerConfig = {
       OnCalendar = "daily";
       #          OnCalendar = "hourly";
