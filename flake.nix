@@ -8,7 +8,7 @@
   };
 
   inputs.nixos-mailserver = {
-    url = "gitlab:simple-nixos-mailserver/nixos-mailserver";
+    url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-26.05";
     inputs.nixpkgs.follows = "clan-core/nixpkgs";
   };
 
