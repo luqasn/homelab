@@ -19,6 +19,7 @@ in
   # updated karakeep that no longer depends on this pnpm.
   nixpkgs.config.permittedInsecurePackages = [
     "pnpm-9.15.9"
+    "immich-2.7.5"
   ];
   services.karakeep = {
     enable = true;
