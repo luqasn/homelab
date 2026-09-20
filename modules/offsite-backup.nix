@@ -250,7 +250,7 @@ in
             # replication prefix), so the join matches per dataset.
             {
               record = "offsite_backup_lag_seconds";
-              expr = ''offsite_backup_source_last_snapshot_timestamp_seconds - label_replace(offsite_backup_last_snapshot_timestamp_seconds{dataset=~"backup/proxmox/.*"}, "dataset", "$1", "dataset", "backup/proxmox/(.*)")'';
+              expr = ''offsite_backup_source_last_snapshot_timestamp_seconds - fill_right(0) label_replace(offsite_backup_last_snapshot_timestamp_seconds{dataset=~"backup/proxmox/.*"}, "dataset", "$1", "dataset", "backup/proxmox/(.*)")'';
             }
 
             # offsite-backup hasn't been scraped successfully in 48h (i.e. the

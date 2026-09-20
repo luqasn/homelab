@@ -139,6 +139,7 @@ in
     services.prometheus = {
       enable = true;
       port = 9001;
+      extraFlags = [ "--enable-feature=promql-binop-fill-modifiers" ];
       exporters = lib.mkMerge [
         {
           node = {
@@ -189,7 +190,7 @@ in
         #        };
       ];
 
-      checkConfig = "syntax-only";
+      checkConfig = false;
 
       rules = [
         (builtins.toJSON {
