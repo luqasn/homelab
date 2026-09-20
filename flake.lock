@@ -386,22 +386,6 @@
         "url": "https://nixos.org/channels/nixos-26.05/nixexprs.tar.xz"
       }
     },
-    "nixpkgs-coder": {
-      "locked": {
-        "lastModified": 1789785513,
-        "narHash": "sha256-B44WL6h0XoLjJ41bUPJk0X5SDinLCII//6EcBLXKiJ0=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "20b1ddd1aa5ace70c9468305030aa4f9ef79671b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
     "nixpkgs-immich-kiosk": {
       "locked": {
         "lastModified": 1783545186,
@@ -499,7 +483,6 @@
           "clan-core",
           "nixpkgs"
         ],
-        "nixpkgs-coder": "nixpkgs-coder",
         "nixpkgs-immich-kiosk": "nixpkgs-immich-kiosk",
         "odysseus": "odysseus"
       }

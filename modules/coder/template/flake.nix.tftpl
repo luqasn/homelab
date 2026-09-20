@@ -9,33 +9,13 @@
 
   inputs = {
     nixpkgs.url     = "github:NixOS/nixpkgs/${nixpkgs_ref}";
-    # Pinned to the Coder server's nixpkgs revision so the `coder` agent binary
-    # built here is the same version as the server (matched RPC API version).
-    # The `coder-push-microvm-template` wrapper on the Coder server passes the
-    # server's nixpkgs rev as the `coder_nixpkgs_rev` terraform variable. This
-    # input deliberately does NOT follow `nixpkgs` above: it must track the
-    # *server*, not whatever branch the workspace user picked for the rest of
-    # the VM. `coder` is then taken from this input via an overlay (see below).
-    nixpkgs-coder.url = "github:NixOS/nixpkgs/${coder_nixpkgs_rev}";
     microvm.url     = "github:microvm-nix/microvm.nix";
     microvm.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, nixpkgs-coder, microvm }:
+  outputs = { self, nixpkgs, microvm }:
   let
     system = "x86_64-linux";
-    # Packages from the server's nixpkgs rev — used only to override `coder`
-    # so the agent matches the server's version. `coder` is a prebuilt Go
-    # binary fetched via fetchurl, so pulling it across nixpkgs revisions is
-    # safe (no glibc/ABI coupling to the VM's own nixpkgs).
-    #
-    # Imported with `allowUnfree = true` (rather than via the default
-    # `legacyPackages` accessor, which has unfree disabled) because `coder`
-    # depends on `terraform`, which is unfree (bsl11) in the server's nixpkgs.
-    # The VM's own `nixpkgs.config.allowUnfree = true` sets config for the *VM's*
-    # nixpkgs input only — it does not propagate to this separate `nixpkgs-coder`
-    # instance, so without this `terraform` fails to evaluate.
-    coderPkgs = import nixpkgs-coder { inherit system; config.allowUnfree = true; };
   in {
     nixosConfigurations.${vm_name} = nixpkgs.lib.nixosSystem {
       inherit system;
@@ -47,14 +27,14 @@
           # ----------------------------------------------------------------
           # Pin `coder` to the server's version
           # ----------------------------------------------------------------
-          # Override pkgs.coder with the one from nixpkgs-coder (the server's
-          # nixpkgs rev, see the nixpkgs-coder input above) so the agent binary
-          # matches the Coder server's version. Everything else in the VM stays
-          # on the workspace user's chosen nixpkgs branch (the nixpkgs_ref
-          # parameter) — only `coder` is pinned, since it's the one binary that
-          # must speak the same RPC API as the server.
+          # `./coder-overlay.nix` is written next to this flake by the
+          # template's main.tf — it is the SAME overlay the Coder server
+          # applies to its own `pkgs` (modules/coder/server.nix), so the agent
+          # binary is always the same pinned upstream release as the server.
+          # Only `coder` is overridden; everything else in the VM stays on the
+          # workspace user's chosen nixpkgs branch (the nixpkgs_ref parameter).
           nixpkgs.overlays = lib.mkAfter [
-            (_: prev: { coder = coderPkgs.coder; })
+            (import ./coder-overlay.nix)
           ];
 
           # ----------------------------------------------------------------

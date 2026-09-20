@@ -222,24 +222,6 @@ variable "authorized_ssh_keys" {
   type        = string
 }
 
-variable "coder_nixpkgs_rev" {
-  description = <<-EOT
-    Full (40-char) nixpkgs revision that built the Coder server's `pkgs.coder`.
-    The per-workspace flake adds a second nixpkgs input pinned to this rev and
-    pulls `coder` from it via an overlay, so the agent binary inside each VM is
-    the same Coder version as the server. Without this the VM's
-    `nixos-unstable` nixpkgs drifts ahead of the server and the agent requests
-    an RPC API version the server doesn't speak ("server is at version X,
-    behind requested minor version Y").
-
-    Supplied automatically by `coder-push-microvm-template` on the Coder server
-    (from `inputs.nixpkgs.sourceInfo.rev`). Has no default on purpose: a manual
-    `coder templates push` that forgets it fails loudly instead of silently
-    deploying workspaces whose agents can never connect.
-  EOT
-  type        = string
-}
-
 # ---------------------------------------------------------------------------
 # Derived locals
 # ---------------------------------------------------------------------------
@@ -253,10 +235,11 @@ locals {
   #   vm_dir        — microvm state dir (/var/lib/microvms/<name>); holds the
   #                   runner symlink, virtiofs sockets, etc. microvm.nix runs
   #                   the VM from here.
-  #   flake_dir     — clean dir holding only flake.nix; nix build evaluates the
-  #                   flake from this path. Must NOT contain socket files or
-  #                   other non-flake artefacts (nix treats a path: input as
-  #                   the whole directory), so it's separate from vm_dir.
+  #   flake_dir     — clean dir holding flake.nix + coder-overlay.nix; nix
+  #                   build evaluates the flake from this path. Must NOT
+  #                   contain socket files or other non-flake artefacts (nix
+  #                   treats a path: input as the whole directory), so it's
+  #                   separate from vm_dir.
   vm_dir         = "/var/lib/microvms/${local.vm_name_s}"
   flake_dir      = "/var/lib/coder-workspaces/${local.vm_name_s}/flake"
   workspace_dir  = "/var/lib/coder-workspaces/${local.vm_name_s}"
@@ -448,11 +431,16 @@ module "filebrowser" {
 # ---------------------------------------------------------------------------
 
 locals {
+  # Pinned-Coder overlay, written next to the flake below. This is the same
+  # file the Coder server applies to its own `pkgs` (it lives at
+  # modules/coder/template/coder-overlay.nix), so server and agent share one
+  # Coder version. See that file for bump instructions.
+  coder_overlay_nix = file("${path.module}/coder-overlay.nix");
+
   flake_nix = templatefile("${path.module}/flake.nix.tftpl", {
     vm_name         = local.vm_name_s
     hypervisor      = data.coder_parameter.hypervisor.value
     nixpkgs_ref       = data.coder_parameter.nixpkgs_ref.value
-    coder_nixpkgs_rev = var.coder_nixpkgs_rev
     vcpus             = data.coder_parameter.vcpus.value
     memory_mb       = data.coder_parameter.memory_mb.value
     disk_gb         = data.coder_parameter.disk_gb.value
@@ -591,9 +579,12 @@ resource "null_resource" "microvm" {
       "chown microvm:kvm ${local.vm_dir}",
       "chmod 0775 ${local.vm_dir}",
 
-      # 1. Write the flake to the clean flake_dir (not vm_dir, which will later
-      #    hold runner symlinks and virtiofs sockets that break `nix build`'s
-      #    path: input ingestion).
+      # 1. Write the flake and the pinned-Coder overlay to the clean flake_dir
+      #    (not vm_dir, which will later hold runner symlinks and virtiofs
+      #    sockets that break `nix build`'s path: input ingestion). The flake
+      #    imports the overlay (`./coder-overlay.nix`); it is the same file the
+      #    Coder server applies, keeping agent and server versions equal.
+      "cat > ${local.flake_dir}/coder-overlay.nix << 'TERRAFORMEOF'\n${local.coder_overlay_nix}\nTERRAFORMEOF",
       "cat > ${local.flake_dir}/flake.nix << 'TERRAFORMEOF'\n${local.flake_nix}\nTERRAFORMEOF",
 
       # 2. Build the VM runner (this may take a few minutes on first run).
