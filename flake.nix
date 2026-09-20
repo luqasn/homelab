@@ -30,24 +30,10 @@
     inputs.nixpkgs.follows = "clan-core/nixpkgs";
   };
 
-  # nixos-unstable, as the source of `pkgs.coder` for the Coder server
-  # (modules/coder/server.nix) AND the per-workspace VM agent. Deliberately
-  # does NOT follow clan-core/nixpkgs: coder must track a newer branch than
-  # the homelab's pinned nixpkgs (whose `coder` lags). The server module pulls
-  # `coder` from here via `import`, and passes this input's `sourceInfo.rev` to
-  # the workspace template as `coder_nixpkgs_rev` — so server and every agent
-  # are byte-for-byte on the SAME coder revision (the version-matching
-  # invariant; see "Agent/server version matching" in modules/coder/README.md).
-  # The revision is pinned by `flake.lock`; bump it with
-  # `nix flake lock --update-input nixpkgs-coder` (or `nix flake update
-  # nixpkgs-coder` on newer Nix) to advance coder. `coder` is a prebuilt Go
-  # binary (`fetchurl` + stdenvNoCC), so pulling it across nixpkgs revisions is
-  # ABI-safe; note its build input `terraform` is unfree (bsl11), hence the
-  # `config.allowUnfree = true` in server.nix's import.
-  inputs.nixpkgs-coder = {
-    url = "github:NixOS/nixpkgs/nixos-unstable";
-  };
-
+  # Coder is NOT pinned to a nixpkgs branch: the server and the workspace
+  # agents share a small overlay pinned to a specific upstream GitHub release
+  # (modules/coder/template/coder-overlay.nix), so advancing coder doesn't
+  # require waiting on nixos-unstable. Bump it by editing that overlay.
   inputs.nixpkgs-immich-kiosk = {
     url = "github:NixOS/nixpkgs/389ed85304b281ca7f306cf8a1eb4378651ca44e";
   };
@@ -57,7 +43,6 @@
       self,
       clan-core,
       nixpkgs,
-      nixpkgs-coder,
       nixpkgs-immich-kiosk,
       ...
     }@inputs:

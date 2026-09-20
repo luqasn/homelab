@@ -16,37 +16,26 @@
 #     creating/stopping workspaces.
 #
 # See modules/coder/README.md for the full deploy walkthrough.
-{ config, lib, pkgs, self, inputs, ... }:
+{ config, lib, pkgs, self, ... }:
 let
   cfg = config.coder.server;
   utils = import ../../lib { inherit config lib; };
   templateDir = "${self}/modules/coder/template";
   provisionerKey = config.clan.core.vars.generators.coder-provisioner-key;
-  # `nixpkgs-coder` (a dedicated nixos-unstable flake input; see flake.nix) is
-  # the single source of truth for the Coder version run by BOTH the server 
-  # and every workspace agent. The server imports its `coder` directly from
-  # this input (`coderSrc`, below); the revision of this same input
-  # (`sourceInfo.rev`) is passed to the workspace template as the
-  # `coder_nixpkgs_rev` terraform variable, where the per-workspace flake pins
-  # a second `nixpkgs-coder` input to that rev and overlays its `coder` in. So
-  # server and agent are always byte-for-byte on the SAME coder revision — 
-  # the version-matching invariant; mismatches make the agent refuse the
-  # server's RPC API version ("server is at version X, behind requested minor
-  # version Y"). This input tracks nixos-unstable (newer `coder` than the
-  # homelab's pinned nixpkgs); bump it with `nix flake lock
-  # --update-input nixpkgs-coder` (or `nix flake update nixpkgs-coder` on
-  # newer Nix).
+  # `coder` is pinned to a fixed upstream GitHub release by a small overlay
+  # (modules/coder/template/coder-overlay.nix). That file is the single source
+  # of truth for BOTH the server and every workspace agent: the server applies
+  # it over the host's `pkgs` here, and the workspace template writes/imports
+  # the same overlay, so server and agent always run the same Coder version
+  # (the version-matching invariant — mismatches make the agent refuse the
+  # server's RPC API version: "server is at version X, behind requested minor
+  # version Y"). Bump Coder by editing that overlay, then redeploy elserver
+  # and re-push the workspace template.
   #
-  # Imported with `allowUnfree = true` because `coder`'s build input
-  # `terraform` is unfree (bsl11) in nixpkgs; the host's own
-  # `nixpkgs.config.allowUnfree` (set in machines/elserver) does not propagate
-  # to this separate import. `coder` is a prebuilt Go binary (fetchurl,
-  # stdenvNoCC), so pulling it across nixpkgs revisions is ABI-safe.
-  coderSrc = import inputs.nixpkgs-coder {
-    system = pkgs.stdenv.hostPlatform.system;
-    config.allowUnfree = true;
-  };
-  nixpkgsRev = inputs.nixpkgs-coder.sourceInfo.rev;
+  # The host's `nixpkgs.config.allowUnfree` (set in machines/elserver) covers
+  # `coder`'s `terraform` build input, so no separate nixpkgs import is needed.
+  coderOverlay = import ./template/coder-overlay.nix;
+  coderPkgs = pkgs.extend coderOverlay;
 in
 {
   imports = [ ./provisioner-key.nix ];
@@ -56,15 +45,16 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = coderSrc.coder;
-      defaultText = lib.literalExpression "inputs.nixpkgs-coder.coder";
+      default = coderPkgs.coder;
+      defaultText = lib.literalExpression "pkgs.coder (via modules/coder/template/coder-overlay.nix)";
       description = ''
         Coder package to use (provides both the CLI and `coder server`).
-        Defaults to the `coder` attr of the `nixpkgs-coder` flake input
-        (nixos-unstable), so the server tracks a current coder — NOT the
-        homelab's pinned `pkgs.coder` (which lags). Bump the version by updating
-        the `nixpkgs-coder` input (`nix flake lock --update-input nixpkgs-coder`);
-        the workspace agent follows automatically via `coder_nixpkgs_rev`.
+        Defaults to the pinned upstream release from
+        `modules/coder/template/coder-overlay.nix` (an overlay over
+        `pkgs.coder`) — NOT the homelab's pinned `pkgs.coder`, which lags.
+        Bump Coder by editing that overlay's `version`/hashes, then redeploy
+        elserver and re-push the workspace template; the agent follows via the
+        same overlay.
       '';
     };
 
@@ -306,7 +296,6 @@ in
           --var bridge_subnet=${cfg.bridgeSubnet} \
           --var coder_server_ip=${config.common.internalIp} \
           --var coder_server_hostname=${cfg.domain} \
-          --var coder_nixpkgs_rev=${nixpkgsRev} \
           --var authorized_ssh_keys='${lib.concatStringsSep "\n" cfg.authorizedSshKeys}' \
           "$@"
       '')
