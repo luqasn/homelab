@@ -37,6 +37,7 @@ in
     ../../modules/tandoor-to-kindle
     ../../modules/coder/server.nix
     ../../modules/coder/power.nix
+    ../../modules/coder/opencode-proxy.nix
     # microvm.nix host: elserver can ALSO run Coder workspace VMs (not just
     # offsite-backup). The template's `microvm_host` coder_parameter lets a
     # user pick per workspace; the embedded provisioner (running here) SSHes
