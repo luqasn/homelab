@@ -417,6 +417,22 @@
         "type": "github"
       }
     },
+    "nixpkgs-meilisearch": {
+      "locked": {
+        "lastModified": 1780788281,
+        "narHash": "sha256-F/+8BIAVQ3QM6Kw6/FHkvCLg9xXGSh34cAK5ffMaIko=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "33b542d89d760488ab3384304939e0bd902126ef",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "33b542d89d760488ab3384304939e0bd902126ef",
+        "type": "github"
+      }
+    },
     "nixpkgs_2": {
       "locked": {
         "lastModified": 1762156382,
@@ -484,6 +500,7 @@
           "nixpkgs"
         ],
         "nixpkgs-immich-kiosk": "nixpkgs-immich-kiosk",
+        "nixpkgs-meilisearch": "nixpkgs-meilisearch",
         "odysseus": "odysseus"
       }
     },

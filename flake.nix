@@ -38,6 +38,19 @@
     url = "github:NixOS/nixpkgs/389ed85304b281ca7f306cf8a1eb4378651ca44e";
   };
 
+  # Pinned to the exact nixpkgs commit that shipped meilisearch 1.45.2 — the
+  # format version of the on-disk Meilisearch database used by Karakeep (see
+  # modules/karakeep.nix). The homelab's pinned nixpkgs (clan-core/nixpkgs,
+  # nixos-26.05) ships 1.43.1, which refuses to open the newer database
+  # ("Database version ... is higher ... Downgrade is not supported").
+  #
+  # This input exists ONLY to provide `meilisearch`; nothing else should use it.
+  # Drop it once clan-core/nixpkgs ships meilisearch >= 1.45.2. Pinning to the
+  # bump commit (instead of a channel) keeps the provided version fixed.
+  inputs.nixpkgs-meilisearch = {
+    url = "github:NixOS/nixpkgs/33b542d89d760488ab3384304939e0bd902126ef";
+  };
+
   outputs =
     {
       self,
