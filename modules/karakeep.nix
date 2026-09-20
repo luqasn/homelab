@@ -23,6 +23,19 @@ in
   ];
   services.karakeep = {
     enable = true;
+
+    # nixpkgs' default `nodejs` is 24.19.0, which backported the
+    # `node::ObjectWrap` cleanup hooks without the accompanying cleanup-hook
+    # registry (nodejs/node#65446). better-sqlite3's `Statement` destructor then
+    # calls `RemoveEnvironmentCleanupHook` with no live Environment during GC and
+    # aborts the process:
+    #   Statement::~Statement -> node::ObjectWrap::~ObjectWrap
+    #   -> RemoveEnvironmentCleanupHook -> Assertion `(env) != nullptr' failed
+    # Node 22 is LTS and predates that change, so build/run Karakeep with it.
+    # Drop this override once nixpkgs ships a nodejs without this regression
+    # (see nodejs/node#65446).
+    package = pkgs.karakeep.override { nodejs = pkgs.nodejs_22; };
+
     meilisearch.enable = true;
     browser.enable = true;
 
