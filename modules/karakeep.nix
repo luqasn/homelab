@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  inputs,
   ...
 }:
 let
@@ -10,6 +11,17 @@ let
     inherit lib;
   };
   karakeepHttpPort = 8778;
+
+  # nixpkgs 26.05 ships meilisearch 1.43.1, but Karakeep's index was migrated by
+  # meilisearch 1.45.2 at some point. Meilisearch is one-way: when the on-disk
+  # database is newer than the binary it refuses to start with
+  #   "Database version X is higher than the Meilisearch version Y."
+  #   "Downgrade is not supported"
+  # Use the dedicated `nixpkgs-meilisearch` input, pinned to the nixpkgs commit
+  # that ships exactly meilisearch 1.45.2. Drop that input (and this binding)
+  # once the pinned nixpkgs ships meilisearch >= 1.45.2.
+  pkgs-meilisearch =
+    inputs.nixpkgs-meilisearch.legacyPackages.${pkgs.stdenv.hostPlatform.system};
 in
 {
   # The bundled `karakeep` service is built from source with a pnpm pinned to
@@ -21,6 +33,8 @@ in
     "pnpm-9.15.9"
     "immich-2.7.5"
   ];
+  services.meilisearch.package = pkgs-meilisearch.meilisearch;
+
   services.karakeep = {
     enable = true;
 
