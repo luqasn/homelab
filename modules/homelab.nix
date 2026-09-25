@@ -230,12 +230,11 @@ in
             # above while apps need this dedicated *.coder.<internalDomain> SAN.
             "*.coder.${config.common.internalDomain}"
           ];
-          dnsProvider = "scaleway";
+          dnsProvider = "desec";
           dnsResolver = "9.9.9.9:53";
           dnsPropagationCheck = true;
           credentialFiles = {
-            "SCW_SECRET_KEY_FILE" = config.sops.secrets.scaleway-secret-key.path;
-            "SCW_ACCESS_KEY_FILE" = config.sops.secrets.scaleway-access-key.path;
+            "DESEC_TOKEN_FILE" = config.sops.secrets.desec-token.path;
           };
         };
       };
