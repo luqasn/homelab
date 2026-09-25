@@ -8,7 +8,12 @@
   description = "Coder workspace VM: ${vm_name}";
 
   inputs = {
-    nixpkgs.url     = "github:NixOS/nixpkgs/${nixpkgs_ref}";
+    # Pinned to a fixed revision, NOT a branch. `pi-web`'s npmDepsHash is tied
+    # to the `prefetch-npm-deps` implementation of the nixpkgs used to build it,
+    # so a floating branch breaks the hash whenever it moves. Pinning the whole
+    # VM nixpkgs makes the workspace build reproducible and lets the vendored
+    # `pi-web/package.nix` keep its original npmDepsHash.
+    nixpkgs.url     = "github:NixOS/nixpkgs/6aefcda9401be8acc2b74244fb3b37520ea1f0a8";
     microvm.url     = "github:microvm-nix/microvm.nix";
     microvm.inputs.nixpkgs.follows = "nixpkgs";
   };
@@ -22,7 +27,44 @@
       specialArgs = { inherit microvm; };
       modules = [
         microvm.nixosModules.microvm
-        ({ config, lib, pkgs, ... }: {
+        ({ config, lib, pkgs, ... }:
+        let
+          # PI WEB: web UI + persistent session manager for the Pi Coding
+          # Agent. The package lives in `./pi-web/` next to this flake (written
+          # by main.tf) and is built from the vendored npm derivation.
+          piWeb = pkgs.callPackage ./pi-web/package.nix { };
+
+          # Agent token on disk, readable only by the workspace user. See
+          # `environment.etc."coder/agent-token"` below for why it's a file.
+          agentTokenFile = "/etc/coder/agent-token";
+
+          # Everything `coder gitssh` needs, plus the git hook that invokes it.
+          #
+          # `coder gitssh` fetches the workspace owner's Coder-managed Git SSH
+          # key (GET /api/v2/workspaceagents/me/gitsshkey — an OSS endpoint, NOT
+          # the Premium "External Authentication" feature), writes it to a temp
+          # file and execs ssh with it. To reach that endpoint it authenticates
+          # as the agent, so it needs CODER_AGENT_URL and the agent token.
+          #
+          # The Coder agent injects these into the shells IT spawns (dashboard
+          # web terminal, `coder ssh`), but nothing else in the VM inherits
+          # them: systemd unit environments are private to their own process
+          # tree. So sshd logins, code-server terminals and pi-web sessions all
+          # came up without them and `coder gitssh` failed. We set them
+          # system-wide and per-unit instead.
+          #
+          # GIT_SSH_COMMAND mirrors upstream's exact form, including the `--`
+          # and the host-key flags the agent itself appends — the temp key file
+          # makes known_hosts churn pointless, and a StrictHostKeyChecking
+          # prompt would hang non-interactive callers (pi-web's agent sessions).
+          coderGitEnv = {
+            CODER_AGENT_URL        = "${coder_url}";
+            CODER_AGENT_TOKEN_FILE = agentTokenFile;
+            GIT_SSH_COMMAND        =
+              "$${pkgs.coder}/bin/coder gitssh -- -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no";
+          };
+        in
+        {
 
           # ----------------------------------------------------------------
           # Pin `coder` to the server's version
@@ -31,8 +73,8 @@
           # template's main.tf — it is the SAME overlay the Coder server
           # applies to its own `pkgs` (modules/coder/server.nix), so the agent
           # binary is always the same pinned upstream release as the server.
-          # Only `coder` is overridden; everything else in the VM stays on the
-          # workspace user's chosen nixpkgs branch (the nixpkgs_ref parameter).
+          # Only `coder` is overridden; everything else in the VM uses the
+          # pinned VM nixpkgs (see the `nixpkgs` input above).
           nixpkgs.overlays = lib.mkAfter [
             (import ./coder-overlay.nix)
           ];
@@ -47,8 +89,19 @@
             # Control socket for graceful shutdown (cloud-hypervisor).
             socket     = "control.socket";
 
-            # Writable nix store overlay (tmpfs, ephemeral) so the nix-daemon
-            # works. Lost on reboot — fine for a workspace VM.
+            # Writable /nix/store overlay, so the nix-daemon can build inside
+            # the VM. The upperdir is backed by the `nix-store.img` volume in
+            # `volumes` below — NOT by the root tmpfs.
+            #
+            # It used to be a plain directory on the root tmpfs, and that ran
+            # workspaces out of *inodes*: tmpfs caps them at RAM-pages / 2, so
+            # a 2048 MiB VM got 262144 inodes for the whole root filesystem.
+            # Nix store paths are tiny-file-dense — the pi-web path alone is
+            # ~36k files for 533 MB — so a single in-VM build of anything
+            # node- or python-shaped exhausted the cap at a few percent of the
+            # nominal byte capacity. Backing it with a disk also stops store
+            # writes from eating the VM's RAM, and keeps the build cache
+            # across reboots.
             writableStoreOverlay = "/nix/.rw-store";
 
             shares = [
@@ -88,13 +141,32 @@
               }
             ];
 
-            # Persistent /var volume (system state across reboots).
+            # Persistent volumes (system state across reboots). Order matters:
+            # microvm.nix assigns /dev/vdX by list position (lib.withDriveLetters,
+            # no labels set here), so append new entries, never insert.
             volumes = [
               {
                 image      = "/var/lib/microvms/${vm_name}/var.img";
                 mountPoint = "/var";
                 size       = ${disk_gb * 1024};  # MiB
                 autoCreate = true;
+              }
+              # Writable /nix/store overlay upperdir. microvm.nix recognises a
+              # volume whose mountPoint equals `writableStoreOverlay` and marks
+              # it neededForBoot automatically (nixos-modules/microvm/mounts.nix).
+              #
+              # `-i 4096` sets one inode per 4 KiB instead of mke2fs's 16 KiB
+              # default, quadrupling inode density for a filesystem that holds
+              # almost nothing but small files. It costs ~6% of the volume for
+              # the inode table. At the default 10 GiB that is ~2.6M inodes,
+              # against the 262k the old tmpfs allowed.
+              {
+                image         = "/var/lib/microvms/${vm_name}/nix-store.img";
+                mountPoint    = "/nix/.rw-store";
+                size          = ${store_gb * 1024};  # MiB
+                autoCreate    = true;
+                fsType        = "ext4";
+                mkfsExtraArgs = [ "-i" "4096" ];
               }
             ];
           };
@@ -221,6 +293,20 @@
             ] ++ (if "${nix_cache_key}" != "" then [ "${nix_cache_key}" ] else []);
           };
 
+          # The store overlay is a fixed-size volume now rather than a tmpfs
+          # wiped on every boot, so nothing reclaims dead paths on its own.
+          # Collect weekly and drop anything unreferenced for a fortnight.
+          nix.gc = {
+            automatic = true;
+            dates     = "weekly";
+            options   = "--delete-older-than 14d";
+          };
+
+          # NOT nix.optimise.automatic / nix.settings.auto-optimise-store:
+          # microvm.nix asserts against both whenever writableStoreOverlay is
+          # set (nixos-modules/microvm/system.nix), because hardlinking across
+          # an overlayfs upperdir corrupts the store.
+
           # ----------------------------------------------------------------
           # Coder agent
           # ----------------------------------------------------------------
@@ -245,6 +331,34 @@
           };
 
           # ----------------------------------------------------------------
+          # Git over SSH via `coder gitssh`
+          # ----------------------------------------------------------------
+          # The token as a file rather than an env var: CODER_AGENT_TOKEN_FILE
+          # keeps the secret out of every child process's environ (visible in
+          # /proc/<pid>/environ and in `ps -E`), and out of shell history when
+          # someone dumps their env. It is NOT a full secret-hardening: the
+          # token is still interpolated into this generated flake by main.tf and
+          # therefore lands world-readable in the VM's /nix/store. Fixing that
+          # properly means pushing the token to the microvm host out-of-band and
+          # referencing the path from here instead of baking in the value.
+          #
+          # mode 0400 + user = the workspace user: the agent (which runs as that
+          # user) and their shells can read it; nothing else in the VM can.
+          environment.etc."coder/agent-token" = {
+            text = "${agent_token}";
+            mode = "0400";
+            user = "${username}";
+          };
+
+          # Covers sshd logins (both the `coder_app "ssh"` external app and the
+          # jump-host route) — NixOS writes these into /etc/profile, which login
+          # shells source. Terminals spawned by code-server and pi-web do NOT
+          # source it reliably (they inherit their unit's environment and often
+          # spawn a non-login shell), so those two units get `coderGitEnv`
+          # explicitly below.
+          environment.sessionVariables = coderGitEnv;
+
+          # ----------------------------------------------------------------
           # code-server (VS Code in the browser, proxied via the agent)
           # ----------------------------------------------------------------
           # Runs as the workspace user, listening on loopback:3000 with
@@ -260,7 +374,9 @@
           systemd.services.code-server = {
             description = "code-server (VS Code in the browser)";
             wantedBy    = [ "multi-user.target" ];
-            environment = {
+            # `coderGitEnv` so integrated terminals and VS Code's own Git
+            # integration — both children of this unit — can push over SSH.
+            environment = coderGitEnv // {
               HOME = "/home/${username}";
             };
             serviceConfig = {
@@ -270,6 +386,64 @@
               Restart          = "on-failure";
               RestartSec       = "5s";
               Environment      = "PATH=/run/wrappers/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/home/${username}/.local/bin";
+            };
+          };
+
+          # ----------------------------------------------------------------
+          # PI WEB (Pi Coding Agent web UI + session daemon)
+          # ----------------------------------------------------------------
+          # Declarative equivalent of `pi-web install`'s per-user services:
+          # `pi-web-sessiond` owns the unix socket under $HOME/.pi-web and
+          # `pi-web-server` serves the UI on loopback:8504. Both run as the
+          # workspace user with HOME on the persistent virtiofs share, so
+          # projects/sessions survive VM reboots. main.tf exposes port 8504 as
+          # the subdomain-based `pi-web` Coder app.
+          #
+          # PI_WEB_ALLOWED_HOSTS=true lets the app accept the Coder subdomain
+          # Host header; the app is still behind Coder's owner-scoped proxy, so
+          # it stays private to the workspace owner.
+          systemd.services.pi-web-sessiond = {
+            description = "PI WEB session daemon";
+            wantedBy    = [ "multi-user.target" ];
+            after       = [ "network-online.target" ];
+            wants       = [ "network-online.target" ];
+            # `coderGitEnv` too: the coding-agent sessions this daemon spawns
+            # run git themselves, and they are children of this unit, not of
+            # the Coder agent.
+            environment = coderGitEnv // {
+              HOME                 = "/home/${username}";
+              PI_WEB_ALLOWED_HOSTS = "true";
+            };
+            serviceConfig = {
+              User             = "${username}";
+              Group            = "${username}";
+              WorkingDirectory = "/home/${username}";
+              ExecStart        = "$${piWeb}/bin/pi-web-sessiond";
+              Environment      = "PATH=/run/current-system/sw/bin:/run/wrappers/bin";
+              Restart          = "on-failure";
+              RestartSec       = "2s";
+            };
+          };
+
+          systemd.services.pi-web = {
+            description = "PI WEB server";
+            wantedBy    = [ "multi-user.target" ];
+            after       = [ "pi-web-sessiond.service" "network-online.target" ];
+            wants       = [ "pi-web-sessiond.service" "network-online.target" ];
+            environment = {
+              HOME                 = "/home/${username}";
+              PI_WEB_HOST          = "127.0.0.1";
+              PI_WEB_PORT          = "8504";
+              PI_WEB_ALLOWED_HOSTS = "true";
+            };
+            serviceConfig = {
+              User             = "${username}";
+              Group            = "${username}";
+              WorkingDirectory = "/home/${username}";
+              ExecStart        = "$${piWeb}/bin/pi-web-server";
+              Environment      = "PATH=/run/current-system/sw/bin:/run/wrappers/bin";
+              Restart          = "on-failure";
+              RestartSec       = "2s";
             };
           };
 
@@ -290,11 +464,19 @@
           environment.systemPackages = with pkgs; [
             coder git git-lfs
             code-server
+            # Pi Coding Agent web UI + persistent session manager (see the
+            # systemd services + Coder app).
+            piWeb
             # filebrowser (web file manager) — baked in so the `module "filebrowser"`
             #   in main.tf finds it on the agent's PATH and skips its runtime
             #   curl|bash install (our agent PATH lacks /usr/local/bin).
             filebrowser
             vim nano curl wget htop jq ripgrep fd unzip gnumake git-crypt
+            # python3 lands in /run/current-system/sw/bin, which is on the PATH
+            # of the pi-web units below — so the coding agent's sessions can run
+            # it without a `nix shell`. Per-project deps belong in a venv or a
+            # project flake, not here.
+            python3
           ] ++ (
             builtins.filter (p: p != null) (
               builtins.map
