@@ -122,6 +122,22 @@
         "type": "github"
       }
     },
+    "flake-compat_2": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1767039857,
+        "narHash": "sha256-vNpUSpF5Nuw8xvDLj2KCwwksIbjua2LZCqhV1LNRDns=",
+        "owner": "NixOS",
+        "repo": "flake-compat",
+        "rev": "5edf11c44bc78a0d334f6334cdaf7d60d732daab",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "flake-compat",
+        "type": "github"
+      }
+    },
     "flake-parts": {
       "inputs": {
         "nixpkgs-lib": [
@@ -467,6 +483,7 @@
     },
     "odysseus": {
       "inputs": {
+        "flake-compat": "flake-compat_2",
         "flake-utils": "flake-utils",
         "nix-darwin": "nix-darwin_2",
         "nixpkgs": [
@@ -475,17 +492,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1781968520,
-        "narHash": "sha256-iy5h8VNkEo0KsDb2DVxG4w6MMO0g4hDXq3OLY0uDzoI=",
+        "lastModified": 1786990024,
+        "narHash": "sha256-jC2t1Lpf4Z2ssDusE9qlQRPPXG+lNgFot5zhCrlN6oU=",
         "owner": "ToyVo",
         "repo": "odysseus",
-        "rev": "b2a99f5b199c33c1ac3aab21dcadcbb0f949a360",
+        "rev": "e79eb75b81d733005303234df065ab2bd94a6d22",
         "type": "github"
       },
       "original": {
         "owner": "ToyVo",
         "repo": "odysseus",
-        "rev": "b2a99f5b199c33c1ac3aab21dcadcbb0f949a360",
+        "rev": "e79eb75b81d733005303234df065ab2bd94a6d22",
         "type": "github"
       }
     },

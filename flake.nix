@@ -14,11 +14,14 @@
 
   # Odysseus AI workspace. Pinned to the PR branch that adds the NixOS
   # service module (https://github.com/pewdiepie-archdaemon/odysseus/pull/2568).
+  # The pin is the current head (e79eb75) of the ToyVo fork's `nix-add-modules`
+  # branch; an earlier rev was force-pushed away and 404'd, so re-pin to the
+  # branch head if this one goes stale.
   # The module's `package` default builds odysseus from its own source via the
   # host system's pkgs, so following clan-core/nixpkgs here is safe and avoids
   # pulling a second nixpkgs copy.
   inputs.odysseus = {
-    url = "github:ToyVo/odysseus/b2a99f5b199c33c1ac3aab21dcadcbb0f949a360";
+    url = "github:ToyVo/odysseus/e79eb75b81d733005303234df065ab2bd94a6d22";
     inputs.nixpkgs.follows = "clan-core/nixpkgs";
   };
 
