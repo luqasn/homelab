@@ -262,6 +262,21 @@
         "type": "github"
       }
     },
+    "homelab-private": {
+      "locked": {
+        "lastModified": 1790500829,
+        "narHash": "sha256-Ye7MK7aPBfrlQnMsaYgDhdx95FbV4F/cXJoZnCpwahQ=",
+        "ref": "refs/heads/main",
+        "rev": "920a11722ea35233f7b94a6bf05fc8bf04d17e05",
+        "revCount": 2,
+        "type": "git",
+        "url": "ssh://forgejo@forgejo.internal.luqasn.org/luqasn/homelab-private.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://forgejo@forgejo.internal.luqasn.org/luqasn/homelab-private.git"
+      }
+    },
     "hoopsnake": {
       "inputs": {
         "devshell": "devshell",
@@ -509,6 +524,7 @@
     "root": {
       "inputs": {
         "clan-core": "clan-core",
+        "homelab-private": "homelab-private",
         "hoopsnake": "hoopsnake",
         "microvm": "microvm",
         "nixos-mailserver": "nixos-mailserver",
