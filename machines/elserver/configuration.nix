@@ -6,7 +6,8 @@
   ...
 }:
 let
-  secrets = import "${self}/secrets/git-crypt.nix";
+  # Semi-secret data (PII) comes from the private homelab-private flake/repo.
+  private = self.inputs.homelab-private.data;
   vaultwardenDir = "/data/vaultwarden";
 in
 {
@@ -103,7 +104,7 @@ in
   networking.hosts."192.168.178.4" = [ "offsite-backup" ];
 
   # homelab settings
-  common.domain = secrets.domain.prod;
+  common.domain = private.domain.prod;
 
   nixpkgs.config.allowUnfree = true;
   mares.starr = {

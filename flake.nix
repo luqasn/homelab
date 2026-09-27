@@ -2,6 +2,13 @@
   inputs.clan-core.url = "https://git.clan.lol/clan/clan-core/archive/26.05.tar.gz";
   inputs.nixpkgs.follows = "clan-core/nixpkgs";
 
+  # Semi-secret data (PII such as the public domains and the upstream mail
+  # host) lives in a separate private repo, consumed as a flake input, instead
+  # of being encrypted in-tree with git-crypt. Nix requires the `git+ssh`
+  # scheme for an SSH git remote. See the private repo's data.nix; its data is
+  # read as `self.inputs.homelab-private.data`.
+  inputs.homelab-private.url = "git+ssh://forgejo@forgejo.internal.luqasn.org/luqasn/homelab-private.git";
+
   inputs.hoopsnake = {
     url = "github:boinkor-net/hoopsnake";
     inputs.nixpkgs.follows = "clan-core/nixpkgs";
