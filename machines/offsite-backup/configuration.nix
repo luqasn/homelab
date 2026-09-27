@@ -6,7 +6,8 @@
   ...
 }:
 let
-  secrets = import "${self}/secrets/git-crypt.nix";
+  # Semi-secret data (PII) comes from the private homelab-private flake/repo.
+  private = self.inputs.homelab-private.data;
   utils = import ../../lib {
     inherit config;
     inherit lib;
@@ -46,11 +47,11 @@ in
   # Resolve the Coder server hostname to elserver's internal IP so
   # offsite-backup itself (and workspace VMs, via the template's own /etc/hosts
   # entry) can phone home. The Coder server runs on elserver, which uses
-  # secrets.domain.prod, so the hostname is coder.internal.<prod-domain>
+  # private.domain.prod, so the hostname is coder.internal.<prod-domain>
   # (coder.${config.common.internalDomain} on elserver). elserver's LAN IP is
   # routable from offsite-backup. Keep in sync with common.internalIp in
   # machines/elserver/configuration.nix.
-  networking.hosts."192.168.1.9" = [ "coder.internal.${secrets.domain.prod}" ];
+  networking.hosts."192.168.1.9" = [ "coder.internal.${private.domain.prod}" ];
 
   services.tailscale = {
     enable = true;
@@ -59,7 +60,7 @@ in
   };
 
   # homelab settings
-  common.domain = secrets.domain.stage;
+  common.domain = private.domain.stage;
   datasets.postgres = "/data/postgres";
 
   nixpkgs.config.allowUnfree = true;

@@ -6,7 +6,9 @@
   ...
 }:
 let
-  secrets = import "${self}/secrets/git-crypt.nix";
+  # Semi-secret data (PII: upstream mail host) comes from the private
+  # homelab-private flake/repo.
+  private = self.inputs.homelab-private.data;
   mail-sync-pkg = pkgs.writeShellApplication {
     name = "mail-sync";
 
@@ -19,7 +21,7 @@ let
       IMAPSYNC_PASSWORD2=$(cat "$CREDENTIALS_DIRECTORY/pw2")
       export IMAPSYNC_PASSWORD1 IMAPSYNC_PASSWORD2
       imapsync --nolog --tmpdir /tmp \
-        --host1 ${secrets.mailhost} --port1 993 --ssl1 \
+        --host1 ${private.mailhost} --port1 993 --ssl1 \
         --user1 lucas@romeromail.de \
         --host2 localhost --ssl2 \
         --user2 lucas@romeromail.de \
