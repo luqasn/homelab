@@ -32,8 +32,15 @@
 #     readable by the Forgejo account with access to luqasn/homelab-private.
 #   * HOMELAB_DEPLOY_SSH_KEY — private half of a key pair that is authorised
 #     for root on elserver and offsite-backup (the `homelab` key listed in
-#     machines/*/configuration.nix). Used by `clan machines update` and
-#     `clan ssh` to reach the machines.
+#     machines/*/configuration.nix). It is installed as
+#     `$HOME/.ssh/homelab_deploy` and passed explicitly on the clan command
+#     line: `clan ssh --ssh-option IdentityFile <path>` and
+#     `clan machines update --target-host root@<host>?IdentityFile=<path>`.
+#     (clan 26.05 has no SSH-options environment variable for `machines
+#     update`, and the flake's targetHost is intentionally left clean.) This
+#     keeps the deploy working even though /etc/ssh/ssh_config on elserver
+#     points at the root-only, unreadable clan secret
+#     /run/secrets/vars/ssh-key-root/id_ed25519.
 #   * CLAN_SOPS_AGE_KEY — the admin age private key (`clan vars keygen`,
 #     normally ~/.config/sops/age/keys.txt). Required to decrypt the machine
 #     age keys and the clan vars/secrets while updating.
@@ -95,9 +102,8 @@ jobs:
           install -d -m 700 "$HOME/.ssh"
           printf '%s\n' "$HOMELAB_DEPLOY_SSH_KEY" > "$HOME/.ssh/homelab_deploy"
           chmod 600 "$HOME/.ssh/homelab_deploy"
-          # `clan machines update` reaches root@<machine> using each machine's
-          # clan.core.networking.targetHost; match both names here so the key is
-          # picked without relying on the default identity files.
+          # Kept so plain `ssh`/`nix`/`git` calls can find the key too; the
+          # clan CLI calls pass it explicitly via --ssh-option/--target-host.
           cat >> "$HOME/.ssh/config" <<'EOF'
           Host elserver offsite-backup
             User root
@@ -126,14 +132,35 @@ jobs:
           export PATH="/run/current-system/sw/bin:$PATH"
           # Reuse the nightly backup's turn-on.service (wired into
           # offsite-backup.target) so the host is up before it is updated.
-          nix develop --command clan ssh elserver -c 'systemctl start turn-on.service'
+          nix develop --command clan ssh elserver \
+            --host-key-check accept-new \
+            --ssh-option IdentityFile "$HOME/.ssh/homelab_deploy" \
+            -c 'systemctl start turn-on.service'
 
       - name: Update all machines
         run: |
           set -euo pipefail
           export PATH="/run/current-system/sw/bin:$PATH"
           nix --version
-          nix develop --command clan machines update
+          # `--host-key-check accept-new` is required: the default is `ask`, which
+          # cannot prompt in CI and makes offsite-backup fail with
+          # "Host key verification failed" on its first contact.
+          #
+          # `machines update` has no --ssh-option in clan 26.05, so the deploy
+          # key is passed via --target-host (same user@host?Opt=value syntax as
+          # targetHost). --target-host accepts only one machine, hence the loop
+          # over the inventory. Machine names match their target hosts here
+          # (root@elserver / root@offsite-backup).
+          machines="$(nix develop --command clan machines list)"
+          if [ -z "$machines" ]; then
+            echo "::error::clan machines list returned no machines"
+            exit 1
+          fi
+          for machine in $machines; do
+            nix develop --command clan machines update "$machine" \
+              --host-key-check accept-new \
+              --target-host "root@${machine}?IdentityFile=$HOME/.ssh/homelab_deploy"
+          done
 
       - name: Power off offsite-backup
         # Only power the host back down after a successful update; leave it up
@@ -143,4 +170,7 @@ jobs:
           set -euo pipefail
           export PATH="/run/current-system/sw/bin:$PATH"
           # Same unit the nightly backup uses (via offsite-backup.target).
-          nix develop --command clan ssh elserver -c 'systemctl start turn-off.service'
+          nix develop --command clan ssh elserver \
+            --host-key-check accept-new \
+            --ssh-option IdentityFile "$HOME/.ssh/homelab_deploy" \
+            -c 'systemctl start turn-off.service'
