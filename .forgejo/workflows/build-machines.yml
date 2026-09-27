@@ -1,0 +1,77 @@
+# Build every machine in the clan with `clan machines build`.
+#
+# Runs on the in-house native runner (label "native:host"), i.e. directly on
+# the host that also runs Forgejo, so the host's nix store is used and
+# rebuilds between runs are incremental.
+#
+# Notes:
+#   * `clan machines build` without machine arguments builds all machines.
+#   * The default format is "toplevel", which only evaluates and builds the
+#     system closure; no secrets are needed. Clan only injects the machine's
+#     decryption key into image formats (iso, sd-card, ...), which this
+#     workflow does not build.
+#   * The runner service PATH only contains coreutils/findutils/gnugrep/gnused/
+#     systemd plus the configured `hostPackages` (see modules/forgejo.nix), so
+#     `nix` is not on PATH and the host system profile is added explicitly.
+#
+# Required setup:
+#   The flake depends on the private input `homelab-private`
+#   (`git+ssh://forgejo@forgejo.internal.luqasn.org/luqasn/homelab-private.git`),
+#   so nix must be able to clone it over SSH:
+#     1. Generate a dedicated SSH key pair (deploy key).
+#     2. Add the PUBLIC key to the Forgejo account that has read access to
+#        luqasn/homelab-private (read-only is enough).
+#     3. Forgejo repo -> Settings -> Actions -> Secrets -> add the PRIVATE key
+#        as HOMELAB_PRIVATE_SSH_KEY.
+
+name: Build all machines
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+
+concurrency:
+  # Never run two heavy builds at the same time on the single native runner.
+  group: build-machines
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: native
+    # Whole-system builds can take a while on a cold store.
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install homelab-private deploy key
+        env:
+          HOMELAB_PRIVATE_SSH_KEY: ${{ secrets.HOMELAB_PRIVATE_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMELAB_PRIVATE_SSH_KEY}" ]; then
+            echo "::error::HOMELAB_PRIVATE_SSH_KEY secret is not configured"
+            exit 1
+          fi
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$HOMELAB_PRIVATE_SSH_KEY" > "$HOME/.ssh/homelab_private"
+          chmod 600 "$HOME/.ssh/homelab_private"
+          cat >> "$HOME/.ssh/config" <<'EOF'
+          Host forgejo.internal.luqasn.org
+            User forgejo
+            IdentityFile ~/.ssh/homelab_private
+            IdentitiesOnly yes
+            StrictHostKeyChecking accept-new
+          EOF
+          chmod 600 "$HOME/.ssh/config"
+
+      - name: Build all machines
+        run: |
+          set -euo pipefail
+          export PATH="/run/current-system/sw/bin:$PATH"
+          nix --version
+          nix develop --command clan machines build
