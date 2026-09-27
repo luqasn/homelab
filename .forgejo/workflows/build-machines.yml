@@ -26,10 +26,10 @@
 
 name: Build all machines
 
+# Only validate builds on pull requests (and manual runs): merges to main are
+# already built by the deploy workflow (`clan machines update` builds on the
+# target hosts), so a separate build on main would be redundant.
 on:
-  push:
-    branches:
-      - main
   pull_request:
   # Allow manual runs from the Actions tab.
   workflow_dispatch:
