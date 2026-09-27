@@ -1,0 +1,146 @@
+# Deploy the clan with `clan machines update`.
+#
+# Runs on the in-house native runner (label "native:host"), i.e. directly on
+# elserver — the same host that runs Forgejo — so `clan machines update` reuses
+# the host's nix store and can reach both machines over SSH.
+#
+# offsite-backup is normally powered off (it is only woken for the nightly
+# backup; see modules/offsite-backup.nix), but it is still a `clan machines
+# update` target, so it must be up before the update and powered down again
+# afterwards. Instead of driving IPMI/smart-switch directly, this workflow
+# reuses the exact systemd units the backup itself runs through:
+#
+#   * turn-on.service  — powers the smart switch + IPMI on and waits for SSH
+#   * turn-off.service — IPMI soft-off, waits for power-off, cuts the switch
+#
+# Both are pulled in by `offsite-backup.target`, so the deploy and the backup
+# share one already-tested power path. They live on elserver and need root, so
+# they are started over SSH with `clan ssh elserver -c ...` — the runner itself
+# is an unprivileged systemd DynamicUser and cannot start system units directly.
+#
+# Notes:
+#   * `clan machines update` without machine arguments updates every machine.
+#   * It generates/decrypts clan vars and uploads the secrets to each target,
+#     so it needs the admin age key (see CLAN_SOPS_AGE_KEY below).
+#   * The runner service PATH only contains coreutils/findutils/gnugrep/gnused/
+#     systemd plus the configured `hostPackages` (see modules/forgejo.nix), so
+#     `nix` is not on PATH and the host system profile is added explicitly.
+#
+# Required setup (Forgejo repo -> Settings -> Actions -> Secrets):
+#   * HOMELAB_PRIVATE_SSH_KEY — deploy key for the private `homelab-private`
+#     flake input (same secret the build workflow uses). Its PUBLIC key must be
+#     readable by the Forgejo account with access to luqasn/homelab-private.
+#   * HOMELAB_DEPLOY_SSH_KEY — private half of a key pair that is authorised
+#     for root on elserver and offsite-backup (the `homelab` key listed in
+#     machines/*/configuration.nix). Used by `clan machines update` and
+#     `clan ssh` to reach the machines.
+#   * CLAN_SOPS_AGE_KEY — the admin age private key (`clan vars keygen`,
+#     normally ~/.config/sops/age/keys.txt). Required to decrypt the machine
+#     age keys and the clan vars/secrets while updating.
+
+name: Deploy all machines
+
+on:
+  push:
+    branches:
+      - main
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+
+concurrency:
+  # Never run two deploys at the same time on the single native runner.
+  group: deploy-machines
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: native
+    # Deploys build on the target hosts, so this can take a while on a cold
+    # store; keep the same budget as the build workflow.
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install homelab-private deploy key
+        env:
+          HOMELAB_PRIVATE_SSH_KEY: ${{ secrets.HOMELAB_PRIVATE_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMELAB_PRIVATE_SSH_KEY}" ]; then
+            echo "::error::HOMELAB_PRIVATE_SSH_KEY secret is not configured"
+            exit 1
+          fi
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$HOMELAB_PRIVATE_SSH_KEY" > "$HOME/.ssh/homelab_private"
+          chmod 600 "$HOME/.ssh/homelab_private"
+          cat >> "$HOME/.ssh/config" <<'EOF'
+          Host forgejo.internal.luqasn.org
+            User forgejo
+            IdentityFile ~/.ssh/homelab_private
+            IdentitiesOnly yes
+            StrictHostKeyChecking accept-new
+          EOF
+          chmod 600 "$HOME/.ssh/config"
+
+      - name: Install clan deploy SSH key
+        env:
+          HOMELAB_DEPLOY_SSH_KEY: ${{ secrets.HOMELAB_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMELAB_DEPLOY_SSH_KEY}" ]; then
+            echo "::error::HOMELAB_DEPLOY_SSH_KEY secret is not configured"
+            exit 1
+          fi
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$HOMELAB_DEPLOY_SSH_KEY" > "$HOME/.ssh/homelab_deploy"
+          chmod 600 "$HOME/.ssh/homelab_deploy"
+          # `clan machines update` reaches root@<machine> using each machine's
+          # clan.core.networking.targetHost; match both names here so the key is
+          # picked without relying on the default identity files.
+          cat >> "$HOME/.ssh/config" <<'EOF'
+          Host elserver offsite-backup
+            User root
+            IdentityFile ~/.ssh/homelab_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking accept-new
+          EOF
+          chmod 600 "$HOME/.ssh/config"
+
+      - name: Install clan secrets age key
+        env:
+          CLAN_SOPS_AGE_KEY: ${{ secrets.CLAN_SOPS_AGE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAN_SOPS_AGE_KEY}" ]; then
+            echo "::error::CLAN_SOPS_AGE_KEY secret is not configured"
+            exit 1
+          fi
+          install -d -m 700 "$HOME/.config/sops/age"
+          printf '%s\n' "$CLAN_SOPS_AGE_KEY" > "$HOME/.config/sops/age/keys.txt"
+          chmod 600 "$HOME/.config/sops/age/keys.txt"
+
+      - name: Power on offsite-backup
+        run: |
+          set -euo pipefail
+          export PATH="/run/current-system/sw/bin:$PATH"
+          # Reuse the nightly backup's turn-on.service (wired into
+          # offsite-backup.target) so the host is up before it is updated.
+          nix develop --command clan ssh elserver -c 'systemctl start turn-on.service'
+
+      - name: Update all machines
+        run: |
+          set -euo pipefail
+          export PATH="/run/current-system/sw/bin:$PATH"
+          nix --version
+          nix develop --command clan machines update
+
+      - name: Power off offsite-backup
+        # Only power the host back down after a successful update; leave it up
+        # if the deploy failed so the failure can be inspected in place.
+        if: success()
+        run: |
+          set -euo pipefail
+          export PATH="/run/current-system/sw/bin:$PATH"
+          # Same unit the nightly backup uses (via offsite-backup.target).
+          nix develop --command clan ssh elserver -c 'systemctl start turn-off.service'
