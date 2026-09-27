@@ -1,0 +1,46 @@
+# Build every machine in the clan with `clan machines build`.
+#
+# Runs on the in-house native runner (label "native:host"), i.e. directly on
+# the host that also runs Forgejo, so the host's nix store is used and
+# rebuilds between runs are incremental.
+#
+# Notes:
+#   * `clan machines build` without machine arguments builds all machines.
+#   * The default format is "toplevel", which only evaluates and builds the
+#     system closure; no secrets are needed. Clan only injects the machine's
+#     decryption key into image formats (iso, sd-card, ...), which this
+#     workflow does not build.
+#   * The runner service PATH only contains coreutils/findutils/gnugrep/gnused/
+#     systemd plus the configured `hostPackages` (see modules/forgejo.nix), so
+#     `nix` is not on PATH and the host system profile is added explicitly.
+
+name: Build all machines
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+
+concurrency:
+  # Never run two heavy builds at the same time on the single native runner.
+  group: build-machines
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: native
+    # Whole-system builds can take a while on a cold store.
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build all machines
+        run: |
+          set -euo pipefail
+          export PATH="/run/current-system/sw/bin:$PATH"
+          nix --version
+          nix develop --command clan machines build
