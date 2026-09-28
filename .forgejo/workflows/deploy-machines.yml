@@ -30,10 +30,12 @@
 #   * HOMELAB_PRIVATE_SSH_KEY — deploy key for the private `homelab-private`
 #     flake input (same secret the build workflow uses). Its PUBLIC key must be
 #     readable by the Forgejo account with access to luqasn/homelab-private.
-#   * HOMELAB_DEPLOY_SSH_KEY — private half of a key pair that is authorised
-#     for root on elserver and offsite-backup (the `homelab` key listed in
-#     machines/*/configuration.nix). It is installed as
-#     `$HOME/.ssh/homelab_deploy` and passed explicitly on the clan command
+#   * HOMELAB_DEPLOY_SSH_KEY — private half of the CI deploy key, a dedicated
+#     key pair for this workflow. Its PUBLIC half is listed in
+#     `users.users.root.openssh.authorizedKeys.keys` in both
+#     machines/*/configuration.nix, so authorisation is managed by deploys
+#     instead of manual /root/.ssh/authorized_keys entries. It is installed
+#     as `$HOME/.ssh/homelab_deploy` and passed explicitly on the clan command
 #     line: `clan ssh --ssh-option IdentityFile <path>` and
 #     `clan machines update --target-host root@<host>?IdentityFile=<path>`.
 #     (clan 26.05 has no SSH-options environment variable for `machines
@@ -41,6 +43,13 @@
 #     keeps the deploy working even though /etc/ssh/ssh_config on elserver
 #     points at the root-only, unreadable clan secret
 #     /run/secrets/vars/ssh-key-root/id_ed25519.
+#     NOTE: a machine can only be deployed once this key is authorised on its
+#     RUNNING system, so a new machine (or one whose running generation
+#     predates the key) needs a one-time bootstrap from an admin machine with
+#     a key that is already accepted, e.g. append the public half to
+#     /root/.ssh/authorized_keys over SSH or run a manual
+#     `clan machines update <machine>` with an admin key, then let this
+#     workflow take over.
 #   * CLAN_SOPS_AGE_KEY — the admin age private key (`clan vars keygen`,
 #     normally ~/.config/sops/age/keys.txt). Required to decrypt the machine
 #     age keys and the clan vars/secrets while updating.
