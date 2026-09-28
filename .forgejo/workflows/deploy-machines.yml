@@ -168,7 +168,8 @@ jobs:
           for machine in $machines; do
             nix develop --command clan machines update "$machine" \
               --host-key-check accept-new \
-              --target-host "root@${machine}?IdentityFile=$HOME/.ssh/homelab_deploy"
+              --target-host "root@${machine}?IdentityFile=$HOME/.ssh/homelab_deploy" \
+              --build-host localhost
           done
 
       - name: Power off offsite-backup
