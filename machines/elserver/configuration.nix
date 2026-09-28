@@ -37,6 +37,7 @@ in
     ../../modules/kindle-todo
     ../../modules/tandoor-to-kindle
     ../../modules/forgejo.nix
+    ../../modules/renovate.nix
     ../../modules/coder/server.nix
     ../../modules/coder/power.nix
     ../../modules/coder/opencode-proxy.nix
