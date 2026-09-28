@@ -170,6 +170,12 @@ in
   users.users.root.openssh.authorizedKeys.keys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOJLoEv6NFo+psb7VFAqeUv1PiIdFyvLGxPLT3+3uvzI luqasn@gmail.com"
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIR8NsEuDEGCRn1vm6Tcn5D5RhAqy/tRxkyE4kX6WUv/ homelab"
+    # CI deploy key (HOMELAB_DEPLOY_SSH_KEY secret in Forgejo): only its
+    # public half is committed here, so the key is managed on every machine
+    # the deploy workflow targets instead of relying on manual
+    # /root/.ssh/authorized_keys entries. Keep in sync with
+    # machines/elserver/configuration.nix.
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKk4bL0xJ+PgtDddVyWOr/SX+w3j36A1F4ZDBQ9O78QD root@elserver"
   ];
 
   users.users.root.openssh.authorizedKeys.keyFiles = [
