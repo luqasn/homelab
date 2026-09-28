@@ -214,11 +214,22 @@ in
       timerConfig.Unit = "nextcloud-cron-previewgenerator.service";
     };
 
+    # NOTE on serviceConfig.LoadCredential: the NixOS `nextcloud-occ` wrapper
+    # shells out to `systemd-run` to load runtime credentials whenever
+    # CREDENTIALS_DIRECTORY is unset. That works when invoked by root, but this
+    # unit runs as `nextcloud`, so `systemd-run` fails with "Access denied as
+    # the requested operation requires interactive authentication". Loading
+    # the same credential the wrapper wants (`secret_file`, i.e.
+    # services.nextcloud.secretFile) here makes systemd provide
+    # CREDENTIALS_DIRECTORY, so the wrapper execs php directly.
     systemd.services.nextcloud-cron-previewgenerator = {
+      after = [ "nextcloud-setup.service" ];
       environment.NEXTCLOUD_CONFIG_DIR = "${config.services.nextcloud.datadir}/config";
       serviceConfig.Type = "oneshot";
       serviceConfig.User = "nextcloud";
       serviceConfig.ExecStart = "${occ} preview:pre-generate";
+      serviceConfig.LoadCredential =
+        "secret_file:${config.sops.secrets.nextcloud-secrets-json.path}";
     };
 
     virtualisation.podman.enable = true;
