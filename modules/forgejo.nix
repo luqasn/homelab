@@ -28,6 +28,12 @@ let
   runnerUnitName = "gitea-runner-${utils.escapeSystemdPath runnerInstanceName}";
 in
 {
+  # The msmtp/SMTP password secret is group-readable by "sendmail", so the
+  # forgejo user must be a member to let msmtp fetch the credentials.
+  users.groups.sendmail.members = [
+    "forgejo"
+  ];
+
   # --- Forgejo service ---
   services.forgejo = {
     enable = true;
@@ -47,6 +53,15 @@ in
       };
       service = {
         DISABLE_REGISTRATION = false;
+      };
+      # Send transactional mail (registration, notifications, ...) through the
+      # host's system sendmail, i.e. the msmtp wrapper configured in
+      # modules/homelab.nix, matching nextcloud and vaultwarden.
+      mailer = {
+        ENABLED = true;
+        PROTOCOL = "sendmail";
+        FROM = "server@romeromail.de";
+        SENDMAIL_PATH = "${pkgs.system-sendmail}/bin/sendmail";
       };
       actions = {
         ENABLED = true;
