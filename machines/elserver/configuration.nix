@@ -251,6 +251,7 @@ in
     device = "ssd/data/forgejo";
     fsType = "zfs";
   };
+  services.forgejo.stateDir = "/data/forgejo";
 
   fileSystems."/data/icloud" = {
     device = "ssd/data/icloud";
