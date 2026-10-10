@@ -1,5 +1,6 @@
 {
   config,
+  lib,
   pkgs,
   ...
 }:
@@ -16,6 +17,30 @@ let
   # plan names snapshots `offsite-...`, so `name=~"@offsite-.*"` selects them.
   # zfs exporter port (offsite-backup listens on 0.0.0.0, same default port):
   #   curl -s <offsiteBackupHost>:9134/metrics | grep -iE 'zfs_dataset_creation_timestamp'
+
+  # Datasets that must always have an offsite backup. `OffsiteBackupStale` can
+  # only fire while a backup series exists, so a dataset that has no replicated
+  # snapshot at all would go unnoticed; `OffsiteBackupMissing` uses one
+  # `absent()` per dataset below to catch exactly that. Keep in sync with the
+  # important datasets covered by the prefix filter on OffsiteBackupStale.
+  requiredBackupDatasets = [
+    "ssd/data/postgres"
+    "ssd/data/vaultwarden"
+    "ssd/data/nextcloud/config"
+    "small/data/nextcloud/files"
+    "ssd/data/mail"
+    "ssd/data/forgejo"
+    "small/data/immich"
+    "ssd/data/karakeep"
+    "ssd/data/actual"
+    "ssd/data/homeassistant"
+    "ssd/data/freshrss"
+    "ssd/data/odysseus"
+    "zroot/local/lib"
+  ];
+  missingBackupExpr = lib.concatMapStringsSep " or\n" (
+    dataset: ''absent(offsite_backup_source_last_snapshot_timestamp_seconds{dataset="${dataset}"})''
+  ) requiredBackupDatasets;
 in
 {
   # This module is imported by elserver only. Tell monitoring.nix (imported by
@@ -129,6 +154,7 @@ in
     script = ''
       zfs-autobackup -v --clear-mountpoint --destroy-missing 14d --no-holds --set-properties readonly=on --ssh-target ${offsiteBackupHost} offsite backup/proxmox
 
+      curl -m 5 --retry 3 https://ping.checklyhq.com/149e341d-fd4e-4e22-a3eb-aa816c8f7444
       # Keep offsite-backup up for 5 minutes after the replication finishes so
       # elserver's Prometheus can scrape its zfs exporter at the default 60s
       # interval before the host powers off (turn-off.service runs only after
@@ -202,25 +228,26 @@ in
             # `pool/dataset@offsite-...`, so the dataset is the part before `@`.
             # zfs-autobackup replicates elserver's source datasets under
             # `backup/proxmox/`, so a replicated snapshot's `name` is
-            # `backup/proxmox/<source>@offsite-...`. A single `label_replace`
-            # captures `<source>` (stripping both the replication prefix and the
+            # `backup/proxmox/<source>@offsite-...`. The `name=~` selector keeps
+            # only replicated snapshots (the host's own system datasets and
+            # non-offsite snapshots are ignored), then two `label_replace`s
+            # capture `<source>` (stripping both the replication prefix and the
             # `@offsite-...` suffix) into a new `dataset` label, so it matches
             # elserver's source path (e.g. `ssd/data/postgres`) and the lag join
             # lines up per dataset. `max by (dataset)` then keeps the newest
             # creation per dataset. `last_over_time` keeps the last good value
             # for 48h while the host is powered off, so the age alert keeps
             # counting up instead of going stale.
-            #
-            # The `name=~"backup/proxmox/.*@offsite-.*"` selector restricts to
-            # replicated snapshots; non-replicated offsite snapshots (orphans)
-            # are intentionally excluded from this metric.
             {
               record = "offsite_backup_last_snapshot_timestamp_seconds";
               expr = ''
                 max by (dataset) (
                   label_replace(
-                    last_over_time(zfs_dataset_creation_timestamp{job="offsite-backup-zfs",type="snapshot"}[48h]),
-                    "dataset", "$1", "name", "([^@]*)@.*"
+                    label_replace(
+                      last_over_time(zfs_dataset_creation_timestamp{job="offsite-backup-zfs",type="snapshot",name=~"backup/proxmox/.*@offsite-.*"}[48h]),
+                      "dataset", "$1", "name", "([^@]*)@.*"
+                    ),
+                    "dataset", "$1", "dataset", "backup/proxmox/(.*)"
                   )
                 )
               '';
@@ -250,7 +277,7 @@ in
             # replication prefix), so the join matches per dataset.
             {
               record = "offsite_backup_lag_seconds";
-              expr = ''offsite_backup_source_last_snapshot_timestamp_seconds - fill_right(0) label_replace(offsite_backup_last_snapshot_timestamp_seconds{dataset=~"backup/proxmox/.*"}, "dataset", "$1", "dataset", "backup/proxmox/(.*)")'';
+              expr = "offsite_backup_source_last_snapshot_timestamp_seconds - fill_right(0) offsite_backup_last_snapshot_timestamp_seconds";
             }
 
             # offsite-backup hasn't been scraped successfully in 48h (i.e. the
@@ -264,18 +291,33 @@ in
               annotations.summary = "offsite-backup has not been scraped successfully in 48h";
             }
             {
-              alert = "OffsiteBackupStale";
-              expr = "offsite_backup_last_snapshot_age_seconds > 48 * 3600";
+              alert = "OffsiteBackupLagging";
+              # Only alert for datasets that are actually replicated offsite:
+              # everything under the ssd/data and small/data pools, plus the
+              # /var/lib dataset (zroot/local/lib). The recording rule above
+              # exposes the source path as `dataset`, so these prefixes match
+              # directly. Anything else (monitoring, caches, media, ...) is
+              # intentionally ignored.
+              expr = "offsite_backup_lag_seconds{dataset=~\"ssd/data/.*|small/data/.*|zroot/local/lib.*\"} > 48 * 3600";
               for = "10m";
               labels.severity = "warning";
-              annotations.summary = "Offsite backup of dataset {{ $labels.dataset }} is older than 48h";
+              annotations.summary = "Offsite backup of dataset {{ $labels.dataset }} is lagging behind elserver by >48h";
+            }
+            # One `absent()` per required dataset: fires when a dataset has no
+            # replicated snapshot at all (which OffsiteBackupStale can't see).
+            {
+              alert = "OffsiteBackupMissing";
+              expr = missingBackupExpr;
+              for = "10m";
+              labels.severity = "warning";
+              annotations.summary = "No offsite backup exists for dataset {{ $labels.dataset }}";
             }
             {
-              alert = "OffsiteBackupLagging";
-              expr = "offsite_backup_lag_seconds > 24 * 3600";
+              alert = "SnapshotsStale";
+              expr = "offsite_backup_source_last_snapshot_timestamp_seconds{dataset=~\"ssd/data/.*|small/data/.*|zroot/local/lib.*\"} > 48 * 3600";
               for = "10m";
               labels.severity = "warning";
-              annotations.summary = "Offsite backup of dataset {{ $labels.dataset }} is lagging behind elserver by >24h";
+              annotations.summary = "Local snapshot of dataset {{ $labels.dataset }} is older than >48h";
             }
           ];
         }
