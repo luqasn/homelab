@@ -10,5 +10,12 @@
   "minimumReleaseAge": "1 week",
   "nix": {
     "enabled": true
-  }
+  },
+  "packageRules": [
+    {
+      "matchManagers": ["nix"],
+      "matchDepNames": ["homelab-private"],
+      "enabled": false
+    }
+  ]
 }
