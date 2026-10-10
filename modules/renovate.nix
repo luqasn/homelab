@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 let
@@ -28,5 +29,10 @@ in
     credentials = {
       RENOVATE_TOKEN = config.sops.secrets.renovate-token.path;
     };
+    runtimePackages = with pkgs; [
+        config.nix.package
+        git
+        openssh
+    ];
   };
 }
