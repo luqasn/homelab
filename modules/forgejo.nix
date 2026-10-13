@@ -159,6 +159,15 @@ in
 
   # Ensure the runner waits for token generation, and for nginx (the runner
   # reaches forgejo through the https vhost nginx terminates).
+  #
+  # `restartIfChanged = false` is essential for self-deploys: the runner is what
+  # executes this repo's Forgejo Actions jobs, including the deploy workflow that
+  # runs `switch-to-configuration` on elserver. If a deploy changes this unit
+  # (e.g. hostPackages), switch-to-configuration would normally stop the runner
+  # mid-switch, which kills the deploy job itself. Skipping the restart lets the
+  # job finish; the runner keeps running the previous generation until it is
+  # restarted, which deploy-machines.yml schedules as a detached transient unit
+  # after the deploy completes.
   systemd.services.${runnerUnitName} = {
     after = [
       "forgejo-runner-token.service"
@@ -168,6 +177,7 @@ in
       "forgejo-runner-token.service"
       "nginx.service"
     ];
+    restartIfChanged = false;
   };
 
   # --- Nginx reverse proxy ---

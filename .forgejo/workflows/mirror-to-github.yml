@@ -77,7 +77,12 @@ jobs:
           # domain is never written into this workflow in the first place.
           printf '%s==>example.com\n' "$HOMELAB_DOMAIN" > /tmp/domain-replacements.txt
 
-          git filter-repo --force --replace-text /tmp/domain-replacements.txt
+          if ! command -v git-filter-repo >/dev/null 2>&1; then
+            echo "::error::git-filter-repo not found on PATH; redeploy elserver so the runner picks up the hostPackages change in modules/forgejo.nix"
+            exit 1
+          fi
+
+          git-filter-repo --force --replace-text /tmp/domain-replacements.txt
 
           git remote add github \
             "https://x-access-token:${GITHUB_MIRROR_TOKEN}@github.com/${GITHUB_MIRROR_REPO}.git"
