@@ -150,6 +150,7 @@ in
       zfs
       zfs-autobackup
       openssh
+      curl
     ];
     script = ''
       zfs-autobackup -v --clear-mountpoint --destroy-missing 14d --no-holds --set-properties readonly=on --ssh-target ${offsiteBackupHost} offsite backup/proxmox
@@ -270,6 +271,14 @@ in
                 )
               '';
             }
+            # Age of the newest local snapshot per dataset. The timestamp rule
+            # above is an absolute Unix time, so staleness must subtract it from
+            # the current time (compare this against 48 * 3600, not the raw
+            # timestamp).
+            {
+              record = "offsite_backup_source_last_snapshot_age_seconds";
+              expr = "time() - offsite_backup_source_last_snapshot_timestamp_seconds";
+            }
             # Per-dataset replication lag = newest elserver offsite snapshot
             # minus newest offsite-backup offsite snapshot, joined on the
             # `dataset` label. Both recording rules expose the elserver *source*
@@ -314,7 +323,7 @@ in
             }
             {
               alert = "SnapshotsStale";
-              expr = "offsite_backup_source_last_snapshot_timestamp_seconds{dataset=~\"ssd/data/.*|small/data/.*|zroot/local/lib.*\"} > 48 * 3600";
+              expr = "offsite_backup_source_last_snapshot_age_seconds{dataset=~\"ssd/data/.*|small/data/.*|zroot/local/lib.*\"} > 48 * 3600";
               for = "10m";
               labels.severity = "warning";
               annotations.summary = "Local snapshot of dataset {{ $labels.dataset }} is older than >48h";
