@@ -184,3 +184,20 @@ jobs:
             --host-key-check accept-new \
             --ssh-option IdentityFile "$HOME/.ssh/homelab_deploy" \
             -c 'systemctl start turn-off.service'
+
+      - name: Schedule runner restart
+        # The runner deliberately survives its own switch (modules/forgejo.nix
+        # sets restartIfChanged = false) so switch-to-configuration cannot stop
+        # it and cancel this job mid-deploy. It therefore keeps running the
+        # previous generation; restart it as a detached transient unit so it
+        # picks up any changes (hostPackages, binary, ...) once this job has
+        # finished. `if: always()` so a failed/partial deploy also gets a fresh
+        # runner. The 60s delay lets this workflow finish before the restart.
+        if: always()
+        run: |
+          set -euo pipefail
+          export PATH="/run/current-system/sw/bin:$PATH"
+          nix develop --command clan ssh elserver \
+            --host-key-check accept-new \
+            --ssh-option IdentityFile "$HOME/.ssh/homelab_deploy" \
+            -c 'systemd-run --on-active=60 --collect /run/current-system/sw/bin/systemctl restart "gitea-runner-forgejo\x2dlocal.service"'
