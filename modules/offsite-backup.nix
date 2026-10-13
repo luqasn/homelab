@@ -150,6 +150,7 @@ in
       zfs
       zfs-autobackup
       openssh
+      curl
     ];
     script = ''
       zfs-autobackup -v --clear-mountpoint --destroy-missing 14d --no-holds --set-properties readonly=on --ssh-target ${offsiteBackupHost} offsite backup/proxmox
