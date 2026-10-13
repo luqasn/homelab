@@ -100,6 +100,7 @@ in
         coreutils
         curl
         gawk
+        git-filter-repo
         gitMinimal
         gnused
         nodejs

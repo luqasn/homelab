@@ -1,0 +1,87 @@
+# Mirror `main` to GitHub with the homelab domain rewritten to example.com.
+#
+# This replaces Forgejo's built-in push mirror, which is a raw
+# `git push --mirror` and therefore cannot rewrite file contents. Instead this
+# job rewrites every occurrence of the domain across the full history of
+# `main` with `git-filter-repo --replace-text`, then force-pushes it to GitHub.
+# Only `main` is mirrored; other branches and tags are left untouched.
+#
+# Rewriting history changes every commit SHA, so the GitHub mirror's history is
+# intentionally independent of Forgejo's and has to be force-pushed. Only the
+# GitHub copy is sanitized; the Forgejo-hosted repo keeps the real domain so
+# the `homelab-private` input still resolves for the build/deploy workflows.
+#
+# The domain is read from the HOMELAB_DOMAIN secret rather than hardcoded, so
+# this workflow file itself stays free of it in the public mirror.
+#
+# Required setup (Forgejo repo -> Settings -> Actions -> Secrets):
+#   * HOMELAB_DOMAIN      — the literal domain to scrub, e.g. "example.com".
+#   * GITHUB_MIRROR_TOKEN — GitHub PAT with write access to the mirror
+#                           (classic scope `repo`, or fine-grained
+#                           "Contents: Read and write").
+#
+# Also required:
+#   Disable the repo's built-in push mirror (Settings -> Repository ->
+#   Mirror Settings). Otherwise it runs alongside this job and re-publishes
+#   the unredacted history to GitHub (including branches/tags this job does
+#   not manage).
+#
+# The runner provides `git-filter-repo` via `hostPackages`
+# (modules/forgejo.nix), so no `nix run`/dev shell is needed here.
+
+name: Mirror to GitHub (sanitized)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  # Never run two mirror pushes at once. Deliberately a distinct group from
+  # build-machines/deploy-machines; the single native runner serialises them.
+  group: mirror-to-github
+  cancel-in-progress: false
+
+env:
+  # GitHub mirror target as <owner>/<repo>. Change this to your GitHub repo.
+  GITHUB_MIRROR_REPO: "luqasn/homelab"
+
+jobs:
+  mirror:
+    runs-on: native
+    timeout-minutes: 30
+    steps:
+      - name: Checkout main with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rewrite domain and push
+        env:
+          HOMELAB_DOMAIN: example.com
+          GITHUB_MIRROR_TOKEN: ${{ secrets.HOMELAB_GITHUB_MIRROR_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMELAB_DOMAIN:-}" ]; then
+            echo "::error::HOMELAB_DOMAIN secret is not configured"
+            exit 1
+          fi
+          if [ -z "${GITHUB_MIRROR_TOKEN:-}" ]; then
+            echo "::error::GITHUB_MIRROR_TOKEN secret is not configured"
+            exit 1
+          fi
+
+          # --replace-text does a literal substring replacement in every file,
+          # in every commit. Build the replacement file from the secret so the
+          # domain is never written into this workflow in the first place.
+          printf '%s==>example.com\n' "$HOMELAB_DOMAIN" > /tmp/domain-replacements.txt
+
+          git filter-repo --force --replace-text /tmp/domain-replacements.txt
+
+          git remote add github \
+            "https://x-access-token:${GITHUB_MIRROR_TOKEN}@github.com/${GITHUB_MIRROR_REPO}.git"
+
+          # Only main, force-pushed (history was rewritten). Other refs on
+          # GitHub are intentionally not touched.
+          git push --force github HEAD:refs/heads/main
