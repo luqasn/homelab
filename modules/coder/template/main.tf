@@ -419,7 +419,10 @@ resource "coder_app" "pi-web" {
   agent_id     = coder_agent.main.id
   slug         = "pi-web"
   display_name = "Pi Web"
-  icon         = "/icon/terminal.svg"
+  # Pie emoji: the dashboard serves emoji icons as PNGs from /emojis/<codepoint>.png,
+  # and a pie is a fitting mark for "Pi". Avoids reusing terminal.svg, which the
+  # SSH app above already uses.
+  icon         = "/emojis/1f967.png"
   url          = "http://127.0.0.1:8504"
   subdomain    = true
   share        = "owner"
@@ -464,6 +467,15 @@ module "filebrowser" {
   # (CODER_DISABLE_PATH_APPS), so subdomain must stay true.
   agent_name = "main"
   subdomain  = true
+  # Keep filebrowser OUT of the workspace-card quick-launch slots. Coder renders
+  # only WORKSPACE_APPS_SLOTS = 4 buttons per workspace row, and the built-in
+  # VS Code Desktop + Web Terminal icons take 2 of them, leaving just 2 for
+  # template apps. Apps are sorted by display_order then display_name, so with
+  # every order equal the alphabetical order ("File Browser" < "Pi Web" <
+  # "VS Code (web)") pushed the web VS Code app out of the row once pi-web was
+  # added. A high order parks filebrowser last, so "Pi Web" and "VS Code (web)"
+  # keep the two slots; the file manager stays reachable from the workspace page.
+  order      = 100
   folder     = "/home/${data.coder_workspace_owner.me.name}"
 }
 
