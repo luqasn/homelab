@@ -97,6 +97,9 @@ in
       ];
       hostPackages = with pkgs; [
         bash
+        # The nix CLI, so workflows (and composite actions that shell out to
+        # `nix run`) can use it; the runner's default PATH has no nix.
+        config.nix.package
         coreutils
         curl
         gawk
