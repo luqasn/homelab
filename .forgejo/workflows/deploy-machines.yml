@@ -15,9 +15,9 @@
 #
 # Both are pulled in by `offsite-backup.target`, so the deploy and the backup
 # share one already-tested power path. They live on elserver and need root, so
-# they are started over ssh with `ssh elserver ...` — the runner itself is an
-# unprivileged systemd DynamicUser and cannot start system units directly.
-# (Plain ssh, not `clan ssh -c`: see the note in the power-on step.)
+# they are started over ssh — the runner itself is an unprivileged systemd
+# DynamicUser and cannot start system units directly. (Plain ssh with explicit
+# key/user options, not `clan ssh -c`: see the note in the power-on step.)
 #
 # Notes:
 #   * `clan machines update` without machine arguments updates every machine.
@@ -112,16 +112,12 @@ jobs:
           install -d -m 700 "$HOME/.ssh"
           printf '%s\n' "$HOMELAB_DEPLOY_SSH_KEY" > "$HOME/.ssh/homelab_deploy"
           chmod 600 "$HOME/.ssh/homelab_deploy"
-          # Kept so plain `ssh`/`nix`/`git` calls can find the key too; the
-          # clan CLI calls pass it explicitly via --ssh-option/--target-host.
-          cat >> "$HOME/.ssh/config" <<'EOF'
-          Host elserver offsite-backup
-            User root
-            IdentityFile ~/.ssh/homelab_deploy
-            IdentitiesOnly yes
-            StrictHostKeyChecking accept-new
-          EOF
-          chmod 600 "$HOME/.ssh/config"
+          # No ~/.ssh/config entry here: it would not be read anyway (the runner
+          # is a DynamicUser whose passwd home is not $HOME, and ssh expands `~`
+          # from passwd), and /etc/ssh/ssh_config's `Host *` IdentityFile points
+          # at the unreadable clan secret. The power-on/off and restart steps
+          # therefore pass -F /dev/null -i "$HOME/.ssh/homelab_deploy" root@elserver
+          # explicitly.
 
       - name: Install clan secrets age key
         env:
@@ -149,8 +145,20 @@ jobs:
           # status is ignored anyway (interactive_ssh uses
           # subprocess.run(check=False)), making the failure silent. ssh runs
           # the command through the remote shell and propagates the exit status.
-          # The "Host elserver" block installed above supplies User/IdentityFile.
-          ssh elserver '/run/current-system/sw/bin/systemctl start turn-on.service'
+          #
+          # Everything is passed explicitly and `-F /dev/null` ignores every ssh
+          # config file. Two reasons: (1) the runner is a systemd DynamicUser
+          # whose passwd home is not the $HOME the workflow writes ~/.ssh/config
+          # into (ssh expands `~` from passwd, so it never saw the Host block),
+          # and (2) /etc/ssh/ssh_config's `Host *` points IdentityFile at the
+          # root-only clan secret /run/secrets/vars/ssh-key-root/id_ed25519.
+          ssh -F /dev/null \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -i "$HOME/.ssh/homelab_deploy" \
+            root@elserver '/run/current-system/sw/bin/systemctl start turn-on.service'
 
       - name: Update all machines
         run: |
@@ -186,8 +194,14 @@ jobs:
           set -euo pipefail
           export PATH="/run/current-system/sw/bin:$PATH"
           # Same unit the nightly backup uses (via offsite-backup.target).
-          # Plain ssh for the same reason as the power-on step above.
-          ssh elserver '/run/current-system/sw/bin/systemctl start turn-off.service'
+          # Explicit ssh options for the same reason as the power-on step above.
+          ssh -F /dev/null \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -i "$HOME/.ssh/homelab_deploy" \
+            root@elserver '/run/current-system/sw/bin/systemctl start turn-off.service'
 
       - name: Schedule runner restart
         # The runner deliberately survives its own switch (modules/forgejo.nix
@@ -201,5 +215,12 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="/run/current-system/sw/bin:$PATH"
-          # Plain ssh (see the power-on step); this also surfaces a failure.
-          ssh elserver '/run/current-system/sw/bin/systemd-run --on-active=60 --collect /run/current-system/sw/bin/systemctl restart "gitea-runner-forgejo\x2dlocal.service"'
+          # Explicit ssh options (see the power-on step); this also surfaces a
+          # failure.
+          ssh -F /dev/null \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -i "$HOME/.ssh/homelab_deploy" \
+            root@elserver '/run/current-system/sw/bin/systemd-run --on-active=60 --collect /run/current-system/sw/bin/systemctl restart "gitea-runner-forgejo\x2dlocal.service"'
