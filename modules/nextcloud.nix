@@ -235,6 +235,7 @@ in
     virtualisation.podman.enable = true;
     virtualisation.oci-containers.containers."collabora" = {
       autoStart = true;
+      # renovate: datasource=docker depName=collabora/code versioning=docker
       image = "docker.io/collabora/code:26.04.1.4.1";
       ports = [ "9980:9980/tcp" ];
       environment = {
