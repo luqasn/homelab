@@ -3,11 +3,13 @@
   lib,
   config,
   self,
+  homelabPrivate,
   ...
 }:
 let
-  # Semi-secret data (PII) comes from the private homelab-private flake/repo.
-  private = self.inputs.homelab-private.data;
+  # Semi-secret data (PII) is in-tree in homelab-private.nix (scrubbed on the
+  # GitHub mirror).
+  private = homelabPrivate;
   vaultwardenDir = "/data/vaultwarden";
 in
 {

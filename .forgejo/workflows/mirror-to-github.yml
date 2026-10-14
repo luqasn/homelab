@@ -10,22 +10,17 @@
 #
 # Rewriting history changes every commit SHA, so the GitHub mirror's history is
 # intentionally independent of Forgejo's and has to be force-pushed. Only the
-# GitHub copy is sanitized; the Forgejo-hosted repo keeps the real domain so
-# the `homelab-private` input still resolves for the build/deploy workflows.
+# GitHub copy is sanitized; the Forgejo-hosted repo keeps the real values so
+# builds and deploys run with the actual domains.
 #
-# The values to scrub are read at runtime from the private `homelab-private`
-# flake input (`data.domain.prod`, `data.domain.stage` and `data.mailhost`)
-# instead of being hardcoded here, so this workflow file itself stays free of
-# them in the public mirror.
+# The values to scrub are read at runtime from the in-tree homelab-private.nix
+# (`domain.prod`, `domain.stage` and `mailhost`) instead of being hardcoded
+# here, so this workflow file itself stays free of them in the public mirror.
 #
 # Required setup (Forgejo repo -> Settings -> Actions -> Secrets):
-#   * HOMELAB_PRIVATE_SSH_KEY — deploy key for the private `homelab-private`
-#                               flake input (the same secret the build and
-#                               deploy workflows use), needed to evaluate the
-#                               private data.
-#   * GITHUB_MIRROR_TOKEN     — GitHub PAT with write access to the mirror
-#                               (classic scope `repo`, or fine-grained
-#                               "Contents: Read and write").
+#   * GITHUB_MIRROR_TOKEN — GitHub PAT with write access to the mirror
+#                           (classic scope `repo`, or fine-grained
+#                           "Contents: Read and write").
 #
 # Also required:
 #   Disable the repo's built-in push mirror (Settings -> Repository ->
@@ -64,27 +59,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install homelab-private deploy key
-        env:
-          HOMELAB_PRIVATE_SSH_KEY: ${{ secrets.HOMELAB_PRIVATE_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "${HOMELAB_PRIVATE_SSH_KEY}" ]; then
-            echo "::error::HOMELAB_PRIVATE_SSH_KEY secret is not configured"
-            exit 1
-          fi
-          install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$HOMELAB_PRIVATE_SSH_KEY" > "$HOME/.ssh/homelab_private"
-          chmod 600 "$HOME/.ssh/homelab_private"
-          cat >> "$HOME/.ssh/config" <<'EOF'
-          Host forgejo.internal.example.com
-            User forgejo
-            IdentityFile ~/.ssh/homelab_private
-            IdentitiesOnly yes
-            StrictHostKeyChecking accept-new
-          EOF
-          chmod 600 "$HOME/.ssh/config"
-
       - name: Rewrite domain and push
         env:
           GITHUB_MIRROR_TOKEN: ${{ secrets.HOMELAB_GITHUB_MIRROR_TOKEN }}
@@ -97,22 +71,18 @@ jobs:
             exit 1
           fi
 
-          # Read the PII values to scrub from the private flake input instead
-          # of hardcoding them. `builtins.getFlake` resolves `homelab-private`
-          # through flake.lock, so the private flake URL is not repeated here
-          # either. All values are read in one evaluation, one per line.
+          # Read the PII values to scrub from the in-tree data file instead of
+          # hardcoding them here. All values are read in one evaluation, one
+          # per line.
           readarray -t private_values < <(nix eval --impure --raw --expr '
-            let
-              flake = builtins.getFlake (toString ./.);
-              data = flake.inputs.homelab-private.data;
-            in
-              "${data.domain.prod}\n${data.domain.stage}\n${data.mailhost}"
+            let data = import ./homelab-private.nix;
+            in "${data.domain.prod}\n${data.domain.stage}\n${data.mailhost}"
           ')
           HOMELAB_DOMAIN="${private_values[0]:-}"
           HOMELAB_STAGE_DOMAIN="${private_values[1]:-}"
           HOMELAB_MAILHOST="${private_values[2]:-}"
           if [ -z "$HOMELAB_DOMAIN" ] || [ -z "$HOMELAB_STAGE_DOMAIN" ] || [ -z "$HOMELAB_MAILHOST" ]; then
-            echo "::error::could not read data.domain.prod, data.domain.stage and data.mailhost from the homelab-private flake input"
+            echo "::error::could not read domain.prod, domain.stage and mailhost from homelab-private.nix"
             exit 1
           fi
 

@@ -3,12 +3,13 @@
   pkgs,
   lib,
   self,
+  homelabPrivate,
   ...
 }:
 let
-  # Semi-secret data (PII: upstream mail host) comes from the private
-  # homelab-private flake/repo.
-  private = self.inputs.homelab-private.data;
+  # Semi-secret data (PII: upstream mail host) is in-tree in
+  # homelab-private.nix (scrubbed on the GitHub mirror).
+  private = homelabPrivate;
   mail-sync-pkg = pkgs.writeShellApplication {
     name = "mail-sync";
 

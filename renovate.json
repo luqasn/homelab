@@ -20,18 +20,5 @@
         "# renovate: datasource=(?<datasource>\\S+)(?: depName=(?<depName>\\S+))?(?: versioning=(?<versioning>\\S+))?\\s+.*?image\\s*=\\s*\"[^\"]*:(?<currentValue>[^\"]+)\";"
       ]
     }
-  ],
-  "packageRules": [
-    {
-      "matchManagers": ["nix"],
-      "matchDepNames": ["homelab-private"],
-      "enabled": false
-    },
-    {
-      "description": "A branch-tracking nixpkgs input only moves its locked rev, so pin the digest to get bump PRs",
-      "matchManagers": ["nix"],
-      "matchDepNames": ["nixpkgs"],
-      "pinDigests": true
-    }
   ]
 }
