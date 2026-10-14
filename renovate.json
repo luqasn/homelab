@@ -11,6 +11,16 @@
   "nix": {
     "enabled": true
   },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update container images annotated with a `# renovate:` comment in .nix files",
+      "managerFilePatterns": ["/\\.nix$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+)(?: depName=(?<depName>\\S+))?(?: versioning=(?<versioning>\\S+))?\\s+.*?image\\s*=\\s*\"[^\"]*:(?<currentValue>[^\"]+)\";"
+      ]
+    }
+  ],
   "packageRules": [
     {
       "matchManagers": ["nix"],
