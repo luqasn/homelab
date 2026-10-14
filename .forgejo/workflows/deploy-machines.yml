@@ -28,9 +28,6 @@
 #     `nix` is not on PATH and the host system profile is added explicitly.
 #
 # Required setup (Forgejo repo -> Settings -> Actions -> Secrets):
-#   * HOMELAB_PRIVATE_SSH_KEY — deploy key for the private `homelab-private`
-#     flake input (same secret the build workflow uses). Its PUBLIC key must be
-#     readable by the Forgejo account with access to luqasn/homelab-private.
 #   * HOMELAB_DEPLOY_SSH_KEY — private half of the CI deploy key, a dedicated
 #     key pair for this workflow. Its PUBLIC half is listed in
 #     `users.users.root.openssh.authorizedKeys.keys` in both
@@ -78,27 +75,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install homelab-private deploy key
-        env:
-          HOMELAB_PRIVATE_SSH_KEY: ${{ secrets.HOMELAB_PRIVATE_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "${HOMELAB_PRIVATE_SSH_KEY}" ]; then
-            echo "::error::HOMELAB_PRIVATE_SSH_KEY secret is not configured"
-            exit 1
-          fi
-          install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$HOMELAB_PRIVATE_SSH_KEY" > "$HOME/.ssh/homelab_private"
-          chmod 600 "$HOME/.ssh/homelab_private"
-          cat >> "$HOME/.ssh/config" <<'EOF'
-          Host forgejo.internal.example.com
-            User forgejo
-            IdentityFile ~/.ssh/homelab_private
-            IdentitiesOnly yes
-            StrictHostKeyChecking accept-new
-          EOF
-          chmod 600 "$HOME/.ssh/config"
 
       - name: Install clan deploy SSH key
         env:
