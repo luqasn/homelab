@@ -1,9 +1,11 @@
-# Mirror `main` to GitHub with the homelab domain rewritten to example.com.
+# Mirror `main` to GitHub with the homelab domains and upstream mail host
+# rewritten to example.com placeholders.
 #
 # This replaces Forgejo's built-in push mirror, which is a raw
 # `git push --mirror` and therefore cannot rewrite file contents. Instead this
-# job rewrites every occurrence of the domain across the full history of
-# `main` with `git-filter-repo --replace-text`, then force-pushes it to GitHub.
+# job rewrites every occurrence of the prod/stage domains and the mail host
+# across the full history of `main` with `git-filter-repo --replace-text`, then
+# force-pushes it to GitHub.
 # Only `main` is mirrored; other branches and tags are left untouched.
 #
 # Rewriting history changes every commit SHA, so the GitHub mirror's history is
@@ -11,14 +13,19 @@
 # GitHub copy is sanitized; the Forgejo-hosted repo keeps the real domain so
 # the `homelab-private` input still resolves for the build/deploy workflows.
 #
-# The domain is read from the HOMELAB_DOMAIN secret rather than hardcoded, so
-# this workflow file itself stays free of it in the public mirror.
+# The values to scrub are read at runtime from the private `homelab-private`
+# flake input (`data.domain.prod`, `data.domain.stage` and `data.mailhost`)
+# instead of being hardcoded here, so this workflow file itself stays free of
+# them in the public mirror.
 #
 # Required setup (Forgejo repo -> Settings -> Actions -> Secrets):
-#   * HOMELAB_DOMAIN      — the literal domain to scrub, e.g. "example.com".
-#   * GITHUB_MIRROR_TOKEN — GitHub PAT with write access to the mirror
-#                           (classic scope `repo`, or fine-grained
-#                           "Contents: Read and write").
+#   * HOMELAB_PRIVATE_SSH_KEY — deploy key for the private `homelab-private`
+#                               flake input (the same secret the build and
+#                               deploy workflows use), needed to evaluate the
+#                               private data.
+#   * GITHUB_MIRROR_TOKEN     — GitHub PAT with write access to the mirror
+#                               (classic scope `repo`, or fine-grained
+#                               "Contents: Read and write").
 #
 # Also required:
 #   Disable the repo's built-in push mirror (Settings -> Repository ->
@@ -57,32 +64,75 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install homelab-private deploy key
+        env:
+          HOMELAB_PRIVATE_SSH_KEY: ${{ secrets.HOMELAB_PRIVATE_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMELAB_PRIVATE_SSH_KEY}" ]; then
+            echo "::error::HOMELAB_PRIVATE_SSH_KEY secret is not configured"
+            exit 1
+          fi
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$HOMELAB_PRIVATE_SSH_KEY" > "$HOME/.ssh/homelab_private"
+          chmod 600 "$HOME/.ssh/homelab_private"
+          cat >> "$HOME/.ssh/config" <<'EOF'
+          Host forgejo.internal.example.com
+            User forgejo
+            IdentityFile ~/.ssh/homelab_private
+            IdentitiesOnly yes
+            StrictHostKeyChecking accept-new
+          EOF
+          chmod 600 "$HOME/.ssh/config"
+
       - name: Rewrite domain and push
         env:
-          HOMELAB_DOMAIN: example.com
           GITHUB_MIRROR_TOKEN: ${{ secrets.HOMELAB_GITHUB_MIRROR_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${HOMELAB_DOMAIN:-}" ]; then
-            echo "::error::HOMELAB_DOMAIN secret is not configured"
-            exit 1
-          fi
+          export PATH="/run/current-system/sw/bin:$PATH"
+
           if [ -z "${GITHUB_MIRROR_TOKEN:-}" ]; then
             echo "::error::GITHUB_MIRROR_TOKEN secret is not configured"
             exit 1
           fi
 
+          # Read the PII values to scrub from the private flake input instead
+          # of hardcoding them. `builtins.getFlake` resolves `homelab-private`
+          # through flake.lock, so the private flake URL is not repeated here
+          # either. All values are read in one evaluation, one per line.
+          readarray -t private_values < <(nix eval --impure --raw --expr '
+            let
+              flake = builtins.getFlake (toString ./.);
+              data = flake.inputs.homelab-private.data;
+            in
+              "${data.domain.prod}\n${data.domain.stage}\n${data.mailhost}"
+          ')
+          HOMELAB_DOMAIN="${private_values[0]:-}"
+          HOMELAB_STAGE_DOMAIN="${private_values[1]:-}"
+          HOMELAB_MAILHOST="${private_values[2]:-}"
+          if [ -z "$HOMELAB_DOMAIN" ] || [ -z "$HOMELAB_STAGE_DOMAIN" ] || [ -z "$HOMELAB_MAILHOST" ]; then
+            echo "::error::could not read data.domain.prod, data.domain.stage and data.mailhost from the homelab-private flake input"
+            exit 1
+          fi
+
           # --replace-text does a literal substring replacement in every file,
-          # in every commit. Build the replacement file from the secret so the
-          # domain is never written into this workflow in the first place.
-          printf '%s==>example.com\n' "$HOMELAB_DOMAIN" > /tmp/domain-replacements.txt
+          # in every commit. Most specific literal first (the stage domain
+          # before the base domain it lives under). Build the replacement file
+          # from the values read above so none of them is ever written into
+          # this workflow in the first place.
+          {
+            printf '%s==>stage.example.com\n' "$HOMELAB_STAGE_DOMAIN"
+            printf '%s==>example.com\n' "$HOMELAB_DOMAIN"
+            printf '%s==>mail.example.com\n' "$HOMELAB_MAILHOST"
+          } > /tmp/private-replacements.txt
 
           if ! command -v git-filter-repo >/dev/null 2>&1; then
             echo "::error::git-filter-repo not found on PATH; redeploy elserver so the runner picks up the hostPackages change in modules/forgejo.nix"
             exit 1
           fi
 
-          git-filter-repo --force --replace-text /tmp/domain-replacements.txt
+          git-filter-repo --force --replace-text /tmp/private-replacements.txt
 
           git remote add github \
             "https://x-access-token:${GITHUB_MIRROR_TOKEN}@github.com/${GITHUB_MIRROR_REPO}.git"
