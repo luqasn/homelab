@@ -212,6 +212,83 @@ in
             }
           ];
         })
+
+        # Stale ZFS datasets: filesystems that still hold data but haven't
+        # been written to for a long time.
+        #
+        # `node_zfs_zpool_dataset_writes` is a monotonic per-dataset counter
+        # from node_exporter's zfs collector, so the last time it increased is
+        # the last time the dataset was written. The pdf/zfs_exporter does not
+        # expose a cumulative write counter (its `zfs_dataset_written_bytes`
+        # is the resettable `written` property, i.e. writes since the previous
+        # snapshot), which is why the node_exporter counter is used here.
+        #
+        # Note the ordering of `last_over_time` and `timestamp`: it must be
+        # `last_over_time((timestamp(...)...))`, not the other way around.
+        # `timestamp(last_over_time(...))` would always return the current
+        # evaluation time, because last_over_time emits the last value as of
+        # *now* and loses the original sample timestamp.
+        (builtins.toJSON {
+          groups = [
+            {
+              name = "zfs";
+              rules = [
+                {
+                  # Unix time of the last observed write, at 1h resolution.
+                  # Comparing against `offset 1h` only counts genuine
+                  # increases, so a counter reset on reboot (a decrease) is
+                  # ignored. The 91d lookback covers the 90d staleness
+                  # threshold below with a day of slack.
+                  record = "zfs:dataset_last_write_timestamp_seconds";
+                  expr = ''
+                    last_over_time(
+                      (timestamp(node_zfs_zpool_dataset_writes > node_zfs_zpool_dataset_writes offset 1h))[91d:1h]
+                    )
+                  '';
+                }
+                {
+                  # Seconds since the last write. Datasets that never changed
+                  # during the lookback have no timestamp series, so they fall
+                  # back to the lookback length (i.e. "at least 91d stale").
+                  # This does mean a freshly-created, never-written dataset is
+                  # treated as stale; expose `creation` for the dataset
+                  # collector if that becomes a problem.
+                  record = "zfs:dataset_write_age_seconds";
+                  expr = ''
+                    time() - zfs:dataset_last_write_timestamp_seconds
+                    or
+                    node_zfs_zpool_dataset_writes * 0 + 91 * 24 * 3600
+                  '';
+                }
+                {
+                  # zfs_exporter labels the dataset `name` while node_exporter
+                  # uses `dataset`; rename so the two can be joined.
+                  record = "zfs:dataset_used_bytes";
+                  expr = ''
+                    label_replace(
+                      zfs_dataset_used_bytes{type="filesystem"},
+                      "dataset", "$1", "name", "(.*)"
+                    )
+                  '';
+                }
+                {
+                  # A dataset is stale if it holds more than 1 GiB and hasn't
+                  # been written to in 90 days. Tune the used-bytes floor and
+                  # the duration, or add exclusions, as needed.
+                  alert = "ZfsDatasetStale";
+                  expr = ''
+                    zfs:dataset_write_age_seconds > 90 * 24 * 3600
+                    and on(dataset)
+                    zfs:dataset_used_bytes > 1024^3
+                  '';
+                  for = "1h";
+                  labels.severity = "warning";
+                  annotations.summary = "ZFS dataset {{ $labels.dataset }} is stale";
+                }
+              ];
+            }
+          ];
+        })
       ];
 
       scrapeConfigs = [
