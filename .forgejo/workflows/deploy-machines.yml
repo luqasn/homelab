@@ -15,8 +15,9 @@
 #
 # Both are pulled in by `offsite-backup.target`, so the deploy and the backup
 # share one already-tested power path. They live on elserver and need root, so
-# they are started over SSH with `clan ssh elserver -c ...` — the runner itself
-# is an unprivileged systemd DynamicUser and cannot start system units directly.
+# they are started over ssh with `ssh elserver ...` — the runner itself is an
+# unprivileged systemd DynamicUser and cannot start system units directly.
+# (Plain ssh, not `clan ssh -c`: see the note in the power-on step.)
 #
 # Notes:
 #   * `clan machines update` without machine arguments updates every machine.
@@ -141,10 +142,15 @@ jobs:
           export PATH="/run/current-system/sw/bin:$PATH"
           # Reuse the nightly backup's turn-on.service (wired into
           # offsite-backup.target) so the host is up before it is updated.
-          nix develop --command clan ssh elserver \
-            --host-key-check accept-new \
-            --ssh-option IdentityFile "$HOME/.ssh/homelab_deploy" \
-            -c 'systemctl start turn-on.service'
+          #
+          # Plain `ssh`, not `clan ssh -c`: in clan 26.05 `clan ssh -c <cmd>`
+          # EXECs the whole command as a single argv element (it never runs a
+          # shell), so a multi-word command fails with "not found", and its exit
+          # status is ignored anyway (interactive_ssh uses
+          # subprocess.run(check=False)), making the failure silent. ssh runs
+          # the command through the remote shell and propagates the exit status.
+          # The "Host elserver" block installed above supplies User/IdentityFile.
+          ssh elserver '/run/current-system/sw/bin/systemctl start turn-on.service'
 
       - name: Update all machines
         run: |
@@ -180,10 +186,8 @@ jobs:
           set -euo pipefail
           export PATH="/run/current-system/sw/bin:$PATH"
           # Same unit the nightly backup uses (via offsite-backup.target).
-          nix develop --command clan ssh elserver \
-            --host-key-check accept-new \
-            --ssh-option IdentityFile "$HOME/.ssh/homelab_deploy" \
-            -c 'systemctl start turn-off.service'
+          # Plain ssh for the same reason as the power-on step above.
+          ssh elserver '/run/current-system/sw/bin/systemctl start turn-off.service'
 
       - name: Schedule runner restart
         # The runner deliberately survives its own switch (modules/forgejo.nix
@@ -197,7 +201,5 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="/run/current-system/sw/bin:$PATH"
-          nix develop --command clan ssh elserver \
-            --host-key-check accept-new \
-            --ssh-option IdentityFile "$HOME/.ssh/homelab_deploy" \
-            -c 'systemd-run --on-active=60 --collect /run/current-system/sw/bin/systemctl restart "gitea-runner-forgejo\x2dlocal.service"'
+          # Plain ssh (see the power-on step); this also surfaces a failure.
+          ssh elserver '/run/current-system/sw/bin/systemd-run --on-active=60 --collect /run/current-system/sw/bin/systemctl restart "gitea-runner-forgejo\x2dlocal.service"'
