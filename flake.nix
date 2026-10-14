@@ -1,6 +1,13 @@
 {
-  inputs.clan-core.url = "https://git.clan.lol/clan/clan-core/archive/26.05.tar.gz";
-  inputs.nixpkgs.follows = "clan-core/nixpkgs";
+  inputs.clan-core = {
+    url = "https://git.clan.lol/clan/clan-core/archive/26.05.tar.gz";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  # Take nixpkgs straight from upstream (nixos-26.05) instead of inheriting the
+  # copy bundled by clan-core. Every other input that consumes a nixpkgs
+  # follows this one, so only a single nixpkgs lands in `flake.lock`.
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
   # Semi-secret data (PII such as the public domains and the upstream mail
   # host) lives in a separate private repo, consumed as a flake input, instead
@@ -11,12 +18,12 @@
 
   inputs.hoopsnake = {
     url = "github:boinkor-net/hoopsnake";
-    inputs.nixpkgs.follows = "clan-core/nixpkgs";
+    inputs.nixpkgs.follows = "nixpkgs";
   };
 
   inputs.nixos-mailserver = {
     url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-26.05";
-    inputs.nixpkgs.follows = "clan-core/nixpkgs";
+    inputs.nixpkgs.follows = "nixpkgs";
   };
 
   # Odysseus AI workspace. Pinned to the PR branch that adds the NixOS
@@ -25,19 +32,19 @@
   # branch; an earlier rev was force-pushed away and 404'd, so re-pin to the
   # branch head if this one goes stale.
   # The module's `package` default builds odysseus from its own source via the
-  # host system's pkgs, so following clan-core/nixpkgs here is safe and avoids
+  # host system's pkgs, so following our nixpkgs here is safe and avoids
   # pulling a second nixpkgs copy.
   inputs.odysseus = {
     url = "github:ToyVo/odysseus/nix-add-modules";
-    inputs.nixpkgs.follows = "clan-core/nixpkgs";
+    inputs.nixpkgs.follows = "nixpkgs";
   };
 
   # microvm.nix — used by modules/coder/microvm-host.nix (runs on
-  # offsite-backup) to host Coder workspace VMs. Follows clan-core/nixpkgs so
-  # we don't pull a second nixpkgs copy into the evaluation.
+  # offsite-backup) to host Coder workspace VMs. Follows our nixpkgs so we
+  # don't pull a second nixpkgs copy into the evaluation.
   inputs.microvm = {
     url = "github:microvm-nix/microvm.nix";
-    inputs.nixpkgs.follows = "clan-core/nixpkgs";
+    inputs.nixpkgs.follows = "nixpkgs";
   };
 
   # Coder is NOT pinned to a nixpkgs branch: the server and the workspace
@@ -50,12 +57,12 @@
 
   # Pinned to the exact nixpkgs commit that shipped meilisearch 1.45.2 — the
   # format version of the on-disk Meilisearch database used by Karakeep (see
-  # modules/karakeep.nix). The homelab's pinned nixpkgs (clan-core/nixpkgs,
-  # nixos-26.05) ships 1.43.1, which refuses to open the newer database
+  # modules/karakeep.nix). The homelab's pinned nixpkgs (nixos-26.05) ships
+  # 1.43.1, which refuses to open the newer database
   # ("Database version ... is higher ... Downgrade is not supported").
   #
   # This input exists ONLY to provide `meilisearch`; nothing else should use it.
-  # Drop it once clan-core/nixpkgs ships meilisearch >= 1.45.2. Pinning to the
+  # Drop it once nixpkgs ships meilisearch >= 1.45.2. Pinning to the
   # bump commit (instead of a channel) keeps the provided version fixed.
   inputs.nixpkgs-meilisearch = {
     url = "github:NixOS/nixpkgs/33b542d89d760488ab3384304939e0bd902126ef";
