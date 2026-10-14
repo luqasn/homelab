@@ -19,6 +19,14 @@
   inputs.hoopsnake = {
     url = "github:boinkor-net/hoopsnake";
     inputs.nixpkgs.follows = "nixpkgs";
+    # hoopsnake's transitive devshell/generate-go-sri inputs would otherwise
+    # pull their own nixpkgs-unstable nodes into flake.lock. Those extra nodes
+    # push the root nixpkgs onto a suffixed key (`nixpkgs_3`), which Renovate's
+    # nix manager cannot associate with the `nixpkgs` input
+    # (renovatebot/renovate#43815), so it stops proposing nixpkgs updates.
+    # Following root keeps a single nixpkgs node named `nixpkgs`.
+    inputs.devshell.inputs.nixpkgs.follows = "nixpkgs";
+    inputs.generate-go-sri.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   inputs.nixos-mailserver = {
