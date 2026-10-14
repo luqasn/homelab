@@ -1,0 +1,26 @@
+name: Update Flake Inputs
+
+on:
+  schedule:
+    # Run every 5 hours
+    - cron: "0 */5 * * *"
+  workflow_dispatch:
+  repository_dispatch:
+
+jobs:
+  update-flake-inputs:
+    runs-on: native
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update flake inputs
+        uses: Mic92/update-flake-inputs-gitea@49f6b1006a8e9a284511911fa46240c39d4bac69
+        with:
+          git-author-name: "renovate"
+          git-committer-name: "renovate"
+          git-author-email: "bot@localhost"
+          git-committer-email: "bot@localhost"
+          gitea-token: ${{ secrets.CI_BOT_TOKEN }}
+          github-token: ${{ secrets.CI_BOT_GITHUB_TOKEN }}
