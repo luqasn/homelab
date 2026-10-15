@@ -34,6 +34,13 @@
           # by main.tf) and is built from the vendored npm derivation.
           piWeb = pkgs.callPackage ./pi-web/package.nix { };
 
+          # OPENCODE 2.x: the OpenCode coding-agent CLI. nixpkgs only ships the
+          # 1.x line, so the 2.x package lives in `./opencode/` next to this
+          # flake (written by main.tf) and is built from the vendored prebuilt
+          # binary there — see modules/coder/template/opencode-package.nix for
+          # the why and the bump instructions.
+          opencode = pkgs.callPackage ./opencode/package.nix { };
+
           # Agent token on disk, readable only by the workspace user. See
           # `environment.etc."coder/agent-token"` below for why it's a file.
           agentTokenFile = "/etc/coder/agent-token";
@@ -520,6 +527,9 @@
             # Pi Coding Agent web UI + persistent session manager (see the
             # systemd services + Coder app).
             piWeb
+            # OpenCode 2.x coding-agent CLI (`opencode` / `opencode2`), vendored
+            # because nixpkgs only ships 1.x — see the `opencode` binding above.
+            opencode
             # filebrowser (web file manager) — baked in so the `module "filebrowser"`
             #   in main.tf finds it on the agent's PATH and skips its runtime
             #   curl|bash install (our agent PATH lacks /usr/local/bin).

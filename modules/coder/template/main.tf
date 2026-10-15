@@ -531,6 +531,17 @@ locals {
   pi_web_package_nix_sha  = sha256("${local.pi_web_package_nix}\n")
   pi_web_package_lock_sha = sha256("${local.pi_web_package_lock}\n")
 
+  # `opencode` packaging expression: the OpenCode 2.x coding-agent CLI. nixpkgs
+  # only ships the 1.x line, so this vendors the prebuilt npm binary
+  # (@opencode/cli-linux-x64) instead — see the file's header for the full
+  # rationale and bump instructions. Single file, no lockfile (unlike pi-web),
+  # written by the step-1 provisioner into `${flake_dir}/opencode/`.
+  opencode_package_nix = chomp(file("${path.module}/opencode-package.nix"))
+
+  # Digest of the bytes that SHOULD land on the host: the chomped content plus
+  # the newline the heredoc puts back. Checked in step 2 below.
+  opencode_package_nix_sha = sha256("${local.opencode_package_nix}\n")
+
   # pi-web's dashboard icon: the mathematical pi glyph as an inline SVG,
   # base64-encoded into a data URI. Coder's built-in icon set (site/static/icon)
   # has no pi and Unicode has no pi emoji, so the only way to get the symbol
@@ -615,13 +626,15 @@ resource "null_resource" "microvm" {
     # re-provisioning still works) but no sensitive value is left in the config.
     agent_token_hash = nonsensitive(sha256(coder_agent.main.token))
     flake_hash       = nonsensitive(sha256(local.flake_nix))
-    # The provisioner below writes the vendored pi-web sources to the host, but
-    # Terraform only re-runs provisioners when a trigger changes. Hash them too
-    # so editing package.nix / its lockfile (which changes the npm-deps
-    # fixed-output hash) actually rewrites the files on the host instead of
-    # leaving a stale copy that fails with "hash mismatch in fixed-output
-    # derivation". These are not secrets, so no nonsensitive() is needed.
+    # The provisioner below writes the vendored pi-web and OpenCode sources to
+    # the host, but Terraform only re-runs provisioners when a trigger changes.
+    # Hash them too so editing package.nix / its lockfile (which changes the
+    # npm-deps fixed-output hash) actually rewrites the files on the host
+    # instead of leaving a stale copy that fails with "hash mismatch in
+    # fixed-output derivation". These are not secrets, so no nonsensitive() is
+    # needed.
     pi_web_hash     = sha256("${local.pi_web_package_nix}\n${local.pi_web_package_lock}")
+    opencode_hash   = sha256("${local.opencode_package_nix}\n")
     workspace_start = data.coder_workspace.me.start_count
     # SSH connection details mirrored here so the destroy-time provisioner can
     # build its own connection from self.triggers.* (Terraform forbids
@@ -698,15 +711,16 @@ resource "null_resource" "microvm" {
       "mkdir -p ${local.flake_dir} ${local.workspace_dir} ${local.vm_dir} ${local.shared_dir}",
 
       # 1. Write the flake, the pinned-Coder overlay, and the vendored pi-web
-      #    package to the clean flake_dir (not vm_dir, which will later hold
-      #    runner symlinks and virtiofs sockets that break `nix build`'s path:
-      #    input ingestion). The flake imports the overlay
+      #    and OpenCode packages to the clean flake_dir (not vm_dir, which will
+      #    later hold runner symlinks and virtiofs sockets that break
+      #    `nix build`'s path: input ingestion). The flake imports the overlay
       #    (`./coder-overlay.nix`) — the same file the Coder server applies, so
       #    agent and server versions stay equal — and builds pi-web from
-      #    `./pi-web/package.nix`.
-      "mkdir -p ${local.flake_dir}/pi-web",
+      #    `./pi-web/package.nix` and OpenCode 2.x from `./opencode/package.nix`.
+      "mkdir -p ${local.flake_dir}/pi-web ${local.flake_dir}/opencode",
       "cat > ${local.flake_dir}/pi-web/package.nix << 'TERRAFORMEOF'\n${local.pi_web_package_nix}\nTERRAFORMEOF",
       "cat > ${local.flake_dir}/pi-web/package-lock.json << 'TERRAFORMEOF'\n${local.pi_web_package_lock}\nTERRAFORMEOF",
+      "cat > ${local.flake_dir}/opencode/package.nix << 'TERRAFORMEOF'\n${local.opencode_package_nix}\nTERRAFORMEOF",
       "cat > ${local.flake_dir}/coder-overlay.nix << 'TERRAFORMEOF'\n${local.coder_overlay_nix}\nTERRAFORMEOF",
       "cat > ${local.flake_dir}/flake.nix << 'TERRAFORMEOF'\n${local.flake_nix}\nTERRAFORMEOF",
     ]
@@ -760,6 +774,8 @@ resource "null_resource" "microvm" {
       "echo '==> verifying pi-web sources on this host:'",
       "echo '${local.pi_web_package_nix_sha}  ${local.flake_dir}/pi-web/package.nix' | sha256sum -c -",
       "echo '${local.pi_web_package_lock_sha}  ${local.flake_dir}/pi-web/package-lock.json' | sha256sum -c -",
+      "echo '==> verifying OpenCode sources on this host:'",
+      "echo '${local.opencode_package_nix_sha}  ${local.flake_dir}/opencode/package.nix' | sha256sum -c -",
       "nix build '${local.flake_dir}#nixosConfigurations.${local.vm_name_s}.config.microvm.runner.${data.coder_parameter.hypervisor.value}' --out-link ${local.vm_dir}/current",
 
       # 3. Stop any existing instance then (re)start
