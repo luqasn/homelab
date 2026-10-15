@@ -429,6 +429,13 @@ resource "coder_app" "pi-web" {
   share     = "owner"
   open_in   = "tab"
 
+  lifecycle {
+    precondition {
+      condition     = length(local.pi_icon) <= 256
+      error_message = "Coder's workspace_apps.icon is a varchar(256); local.pi_icon is ${length(local.pi_icon)} characters. Shorten local.pi_icon_svg."
+    }
+  }
+
   healthcheck {
     url       = "http://127.0.0.1:8504/"
     interval  = 5
@@ -532,7 +539,14 @@ locals {
   # renders fine. Drawn as strokes rather than a <text> glyph so it never
   # depends on the viewer having a particular font; the colour matches pi-web's
   # own dev mark.
-  pi_icon_svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#a371f7\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5.5 8.5h13M9.5 8.5c-.6 4.2-1.4 6.6-2.8 9M14.5 8.5c.6 4.2 1.4 6.6 2.8 9\"/></svg>"
+  #
+  # It MUST stay small: Coder stores it in `workspace_apps.icon`, a
+  # varchar(256), and an oversized value aborts the template push with
+  # "pq: value too long for type character varying(256)". The whole data URI is
+  # therefore kept under 256 characters (the coder_app.pi-web precondition
+  # below enforces it), which is why the path uses quadratic curves and drops
+  # the linecap/linejoin attributes.
+  pi_icon_svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#a371f7\" stroke-width=\"2\"><path d=\"M5 9h14M9 9q-.5 4-2.5 9M15 9q.5 4 2.5 9\"/></svg>"
   pi_icon     = "data:image/svg+xml;base64,${base64encode(local.pi_icon_svg)}"
 
   flake_nix = chomp(templatefile("${path.module}/flake.nix.tftpl", {
