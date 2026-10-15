@@ -63,6 +63,26 @@
             GIT_SSH_COMMAND        =
               "$${pkgs.coder}/bin/coder gitssh -- -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no";
           };
+
+          # Pi Coding Agent global defaults, materialized into the workspace
+          # home by the `pi-agent-defaults` unit below. Kept in the Nix store
+          # (writeText) so the unit can `install` real, user-owned copies:
+          # PI WEB rewrites settings.json at runtime, which a /nix/store symlink
+          # would defeat.
+          #
+          # `AGENTS.md` is Pi's global-instructions file: loaded into every
+          # session, whichever project it runs in. `settings.json` is Pi's
+          # global config; only the startup provider/model and the Relays
+          # package PI WEB ships are pinned here (see the unit for why the
+          # package is declared rather than left to auto-install).
+          piAgentsMd = pkgs.writeText "pi-AGENTS.md"
+            "When asked to generate code, please start a new branch off of main (after fetching) and push your changes there.\n";
+
+          piSettingsJson = pkgs.writeText "pi-settings.json" (builtins.toJSON {
+            defaultProvider = "opencode-go";
+            defaultModel    = "deepseek-v4.1-flash";
+            packages        = [ "$${piWeb}/lib/node_modules/pi-web/dist/pi-packages/relays" ];
+          });
         in
         {
 
@@ -445,6 +465,39 @@
               Restart          = "on-failure";
               RestartSec       = "2s";
             };
+          };
+
+          # ----------------------------------------------------------------
+          # Pi Coding Agent defaults (global, every new session)
+          # ----------------------------------------------------------------
+          # Seeds Pi's global config into the persistent home share ($HOME is
+          # the host-backed virtiofs mount, so it survives VM reboots). Runs as
+          # the workspace user — not root — so the files land owned by 1000
+          # without a chown across virtiofs, and before pi-web-sessiond so the
+          # daemon never starts a session against a missing/stale config.
+          #
+          # This is the source of truth: the unit rewrites both files each time
+          # it (re)starts, so a model picked in the web UI is a runtime
+          # override, not a lasting one. `settings.json` also declares the
+          # Relays package PI WEB would otherwise auto-install at sessiond
+          # startup — declaring it makes that reconciliation a no-op, so it
+          # does not immediately rewrite the file we just wrote.
+          systemd.services.pi-agent-defaults = {
+            description = "Seed Pi Coding Agent global defaults";
+            wantedBy    = [ "multi-user.target" ];
+            before      = [ "pi-web-sessiond.service" ];
+            path        = [ pkgs.coreutils ];
+            serviceConfig = {
+              Type            = "oneshot";
+              RemainAfterExit = true;
+              User            = "${username}";
+              Group           = "${username}";
+            };
+            script = ''
+              install -d -m 0755 /home/${username}/.pi/agent
+              install -m 0644 $${piAgentsMd} /home/${username}/.pi/agent/AGENTS.md
+              install -m 0644 $${piSettingsJson} /home/${username}/.pi/agent/settings.json
+            '';
           };
 
           # ----------------------------------------------------------------
