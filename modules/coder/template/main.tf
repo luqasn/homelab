@@ -419,14 +419,15 @@ resource "coder_app" "pi-web" {
   agent_id     = coder_agent.main.id
   slug         = "pi-web"
   display_name = "Pi Web"
-  # Pie emoji: the dashboard serves emoji icons as PNGs from /emojis/<codepoint>.png,
-  # and a pie is a fitting mark for "Pi". Avoids reusing terminal.svg, which the
-  # SSH app above already uses.
-  icon         = "/emojis/1f967.png"
-  url          = "http://127.0.0.1:8504"
-  subdomain    = true
-  share        = "owner"
-  open_in      = "tab"
+  # The mathematical pi glyph, embedded as an SVG data URI — see local.pi_icon.
+  # Coder ships no pi under /icon/ and Unicode has no pi emoji under /emojis/,
+  # and the dashboard renders `coder_app.icon` as an <img src>, so we carry the
+  # glyph ourselves. Also avoids reusing terminal.svg, which the SSH app uses.
+  icon      = local.pi_icon
+  url       = "http://127.0.0.1:8504"
+  subdomain = true
+  share     = "owner"
+  open_in   = "tab"
 
   healthcheck {
     url       = "http://127.0.0.1:8504/"
@@ -475,8 +476,8 @@ module "filebrowser" {
   # "VS Code (web)") pushed the web VS Code app out of the row once pi-web was
   # added. A high order parks filebrowser last, so "Pi Web" and "VS Code (web)"
   # keep the two slots; the file manager stays reachable from the workspace page.
-  order      = 100
-  folder     = "/home/${data.coder_workspace_owner.me.name}"
+  order  = 100
+  folder = "/home/${data.coder_workspace_owner.me.name}"
 }
 
 # ---------------------------------------------------------------------------
@@ -522,6 +523,17 @@ locals {
   # the newline the heredoc puts back. Checked in step 2 below.
   pi_web_package_nix_sha  = sha256("${local.pi_web_package_nix}\n")
   pi_web_package_lock_sha = sha256("${local.pi_web_package_lock}\n")
+
+  # pi-web's dashboard icon: the mathematical pi glyph as an inline SVG,
+  # base64-encoded into a data URI. Coder's built-in icon set (site/static/icon)
+  # has no pi and Unicode has no pi emoji, so the only way to get the symbol
+  # without a third-party URL or a server-side asset is to carry it here. The
+  # dashboard's CSP is `img-src 'self' https: data: blob:`, so a data: URI
+  # renders fine. Drawn as strokes rather than a <text> glyph so it never
+  # depends on the viewer having a particular font; the colour matches pi-web's
+  # own dev mark.
+  pi_icon_svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#a371f7\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5.5 8.5h13M9.5 8.5c-.6 4.2-1.4 6.6-2.8 9M14.5 8.5c.6 4.2 1.4 6.6 2.8 9\"/></svg>"
+  pi_icon     = "data:image/svg+xml;base64,${base64encode(local.pi_icon_svg)}"
 
   flake_nix = chomp(templatefile("${path.module}/flake.nix.tftpl", {
     vm_name               = local.vm_name_s
