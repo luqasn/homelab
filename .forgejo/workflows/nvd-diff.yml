@@ -1,10 +1,12 @@
 # Build the base branch and the PR head for every machine and post the
 # resulting `nvd diff` as a single, updated-in-place PR comment.
 #
-# Only runs for PRs opened/pushed by the Renovate bot, so the expensive
+# Runs for every PR for now. The Renovate-only `github.actor` gate was
+# removed to make the workflow testable; re-add it (e.g. as a
+# `github.actor == 'renovate'` job condition, ideally via a
+# `vars.FLAKE_BOT_USER` repo variable) once it is verified, so the expensive
 # base-vs-head rebuild only happens for dependency bumps where the package
-# diff actually matters. If the bot user is ever renamed, update the
-# `github.actor` check below (a `vars.FLAKE_BOT_USER` repo variable works too).
+# diff actually matters.
 #
 # Runs on the in-house native runner (label "native:host"), i.e. directly on
 # elserver — the same host that runs Forgejo — so both flake checkouts reuse
@@ -41,8 +43,6 @@ concurrency:
 
 jobs:
   nvd-diff:
-    # Only run when the bot user pushed/opened the PR.
-    if: github.actor == 'renovate'
     runs-on: native
     # Two full system closures (base + PR) on a cold store can take a while.
     timeout-minutes: 180
