@@ -19,6 +19,16 @@
 # DynamicUser and cannot start system units directly. (Plain ssh with explicit
 # key/user options, not `clan ssh -c`: see the note in the power-on step.)
 #
+# After the machines are updated, the workflow also pushes the Coder workspace
+# template to the server on elserver. That push is a systemd unit on elserver
+# (`coder-push-template.service`, defined in modules/coder/server.nix) that this
+# job starts, so a failure is reported as a failed job. It keeps the template —
+# and therefore every workspace agent — on the same Coder version as the server
+# in a single deploy when modules/coder/template changes. The unit uses root's
+# `coder login` session; modules/coder/server.nix raises
+# CODER_DEFAULT_TOKEN_LIFETIME so that session does not expire (which is what
+# broke the manual push).
+#
 # Notes:
 #   * `clan machines update` without machine arguments updates every machine.
 #   * It generates/decrypts clan vars and uploads the secrets to each target,
@@ -161,6 +171,22 @@ jobs:
               --target-host "root@${machine}?IdentityFile=$HOME/.ssh/homelab_deploy" \
               --build-host localhost
           done
+
+      - name: Push Coder workspace template
+        # Start the systemd unit defined in modules/coder/server.nix. It is not
+        # wanted by any target, so this job is the only thing that runs it. If
+        # the current template revision was already pushed the unit is a no-op
+        # (it records a stamp).
+        run: |
+          set -euo pipefail
+          export PATH="/run/current-system/sw/bin:$PATH"
+          ssh -F /dev/null \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -i "$HOME/.ssh/homelab_deploy" \
+            root@elserver '/run/current-system/sw/bin/systemctl start coder-push-template.service'
 
       - name: Power off offsite-backup
         # Only power the host back down after a successful update; leave it up

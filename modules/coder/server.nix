@@ -22,6 +22,45 @@ let
   utils = import ../../lib { inherit config lib; };
   templateDir = "${self}/modules/coder/template";
   provisionerKey = config.clan.core.vars.generators.coder-provisioner-key;
+  # Content-addressed copy of the template directory. Its store path changes
+  # ONLY when the template's own files change (unlike `${self}`, which changes
+  # on every commit), so it is the service's "did the template change?" key:
+  # the service records the last pushed revision and is a no-op when it matches.
+  templateRev = builtins.path {
+    path = ./template;
+    name = "coder-microvm-template";
+  };
+  # Uploads the workspace template with the right variables. Installed on PATH
+  # for interactive use and run by coder-push-template.service with `--yes`.
+  # It authenticates with the `coder login` session (long-lived thanks to
+  # CODER_DEFAULT_TOKEN_LIFETIME below) or an explicit CODER_SESSION_TOKEN.
+  pushTemplate = pkgs.writeShellScriptBin "coder-push-microvm-template" ''
+    set -euo pipefail
+    : "''${CODER_VM_HOST:=offsite-backup}"
+    # Pin the server under test: a stored `coder login` may point at a
+    # different instance.
+    : "''${CODER_URL:=${cfg.accessUrl}}"
+    export CODER_URL
+    # A deploy that bumps the Coder version restarts coder.service, so wait for
+    # the API to answer before pushing instead of racing the server's startup
+    # and DB migrations. Probe through the access URL (same path the push uses)
+    # so the Host/TLS checks match. 30 attempts * 2s = 60s max.
+    for ((i = 0; i < 30; i++)); do
+      ${pkgs.curl}/bin/curl -fsS -o /dev/null "${cfg.accessUrl}/healthz" && break
+      sleep 2
+    done
+    exec ${lib.getExe' cfg.package "coder"} templates push microvm-nixos \
+      --directory "${templateDir}" \
+      --var host_ssh_address="''${CODER_VM_HOST}" \
+      --var host_ssh_user=root \
+      --var host_ssh_private_key_path="${provisionerKey.files."id_ed25519".path}" \
+      --var bridge_name=${cfg.bridgeName} \
+      --var bridge_subnet=${cfg.bridgeSubnet} \
+      --var coder_server_ip=${config.common.internalIp} \
+      --var coder_server_hostname=${cfg.domain} \
+      --var authorized_ssh_keys='${lib.concatStringsSep "\n" cfg.authorizedSshKeys}' \
+      "$@"
+  '';
   # `coder` is pinned to a fixed upstream GitHub release by a small overlay
   # (modules/coder/template/coder-overlay.nix). That file is the single source
   # of truth for BOTH the server and every workspace agent: the server applies
@@ -205,6 +244,15 @@ in
         # apps use `subdomain = true`; the `external = true` ssh app is unaffected
         # (it's opened client-side, not proxied on a path).
         CODER_DISABLE_PATH_APPS = "true";
+        # `coder login` sessions and API tokens default to 168h and are only
+        # extended by activity, which is why the manual `echo yes |
+        # coder-push-microvm-template` eventually failed with "your session has
+        # expired". Raise both the default and the cap to effectively no
+        # expiry, so the CLI session used by coder-push-template.service (and
+        # by hand) stays valid. This applies to CLI/IDE API tokens, not web
+        # session cookies (CODER_SESSION_DURATION).
+        CODER_DEFAULT_TOKEN_LIFETIME = "876000h";
+        CODER_MAX_TOKEN_LIFETIME = "876600h";
         CODER_HTTP_ADDRESS = "127.0.0.1:${toString cfg.port}";
         CODER_PG_CONNECTION_URL = "postgresql:///coder?host=/run/postgresql&user=coder";
         CODER_PROMETHEUS_ENABLE = "true";
@@ -280,25 +328,66 @@ in
     #   coder templates push microvm-nixos --directory /etc/coder/templates/microvm-nixos ...
     environment.etc."coder/templates/microvm-nixos".source = templateDir;
 
+    # Push the workspace template whenever the deployed template changes. This
+    # is what keeps the server and every workspace agent on the same Coder
+    # version. The unit is started by the deploy workflow (it is deliberately
+    # not wanted by any target, so it does not run on boot), and it records the
+    # last pushed template revision so an unchanged template is a no-op.
+    systemd.services.coder-push-template = {
+      description = "Push the Coder microvm workspace template";
+      after = [ "coder.service" "network-online.target" ];
+      wants = [ "network-online.target" ];
+      requires = [ "coder.service" ];
+      environment = {
+        TEMPLATE_REV = "${templateRev}";
+        CODER_URL = cfg.accessUrl;
+        # The service runs as root; systemd does not set HOME, and the `coder`
+        # CLI looks for its session under $HOME/.config/coderv2.
+        HOME = "/root";
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        StateDirectory = "coder-push-template";
+        # The push runs terraform init/plan; a cold cache can take a while.
+        TimeoutStartSec = "15min";
+      };
+      script = ''
+        set -euo pipefail
+        # Wait for the API to answer (coder.service may have just restarted for
+        # a version bump) and skip if nobody is logged in, so a fresh host does
+        # not fail the deploy. Log in once as root on elserver and the next
+        # deploy pushes.
+        logged_in=0
+        for ((i = 0; i < 30; i++)); do
+          if ${lib.getExe' cfg.package "coder"} whoami >/dev/null 2>&1; then
+            logged_in=1
+            break
+          fi
+          sleep 2
+        done
+        if [ "$logged_in" -ne 1 ]; then
+          echo "root is not logged in to Coder (or the API did not answer); skipping the template push. Run 'coder login ${cfg.accessUrl}' on elserver." >&2
+          exit 0
+        fi
+        stamp="$STATE_DIRECTORY/template-rev"
+        if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$TEMPLATE_REV" ]; then
+          echo "microvm-nixos template already pushed for $TEMPLATE_REV"
+          exit 0
+        fi
+        ${lib.getExe pushTemplate} --yes
+        printf '%s\n' "$TEMPLATE_REV" > "$stamp"
+      '';
+    };
+
     # `coder` CLI for `coder login` / day-to-day admin, plus the template
-    # push wrapper below. Run `coder login ${cfg.accessUrl}` first.
+    # push wrapper. The wrapper always targets ${cfg.accessUrl} (override with
+    # CODER_URL) and authenticates with the stored `coder login` session (or an
+    # explicit CODER_SESSION_TOKEN); coder-push-template.service drives it.
+    # The session is long-lived because CODER_DEFAULT_TOKEN_LIFETIME is raised
+    # above.
     environment.systemPackages = [
       cfg.package
-      (pkgs.writeShellScriptBin "coder-push-microvm-template" ''
-        set -euo pipefail
-        : "''${CODER_VM_HOST:=offsite-backup}"
-        exec ${lib.getExe' cfg.package "coder"} templates push microvm-nixos \
-          --directory "${templateDir}" \
-          --var host_ssh_address="''${CODER_VM_HOST}" \
-          --var host_ssh_user=root \
-          --var host_ssh_private_key_path="${provisionerKey.files."id_ed25519".path}" \
-          --var bridge_name=${cfg.bridgeName} \
-          --var bridge_subnet=${cfg.bridgeSubnet} \
-          --var coder_server_ip=${config.common.internalIp} \
-          --var coder_server_hostname=${cfg.domain} \
-          --var authorized_ssh_keys='${lib.concatStringsSep "\n" cfg.authorizedSshKeys}' \
-          "$@"
-      '')
+      pushTemplate
     ];
   };
 }
