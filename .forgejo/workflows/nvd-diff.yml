@@ -1,0 +1,132 @@
+# Build the base branch and the PR head for every machine and post the
+# resulting `nvd diff` as a single, updated-in-place PR comment.
+#
+# Runs for every PR for now. The Renovate-only `github.actor` gate was
+# removed to make the workflow testable; re-add it (e.g. as a
+# `github.actor == 'renovate'` job condition, ideally via a
+# `vars.FLAKE_BOT_USER` repo variable) once it is verified, so the expensive
+# base-vs-head rebuild only happens for dependency bumps where the package
+# diff actually matters.
+#
+# Runs on the in-house native runner (label "native:host"), i.e. directly on
+# elserver — the same host that runs Forgejo — so both flake checkouts reuse
+# the host's nix store and incremental builds between the base and the PR are
+# cheap.
+#
+# Notes:
+#   * `nix build <flake>#nixosConfigurations.<host>.config.system.build.toplevel`
+#     only evaluates and builds the system closure; no clan secrets are needed
+#     (the private flake was folded into the in-tree homelab-private.nix).
+#   * HOSTS is empty by default, which means "every nixosConfigurations entry
+#     in the PR flake". Set it to a space-separated list to diff a subset.
+#   * The runner service PATH only contains coreutils/findutils/gnugrep/gnused/
+#     systemd plus the configured `hostPackages` (see modules/forgejo.nix), so
+#     `nix` is available but `jq` is not — the steps pull `jq`, `curl` and
+#     `nvd` from nixpkgs via `nix shell`.
+#
+# Required setup (Forgejo repo -> Settings -> Actions -> Secrets):
+#   * CI_BOT_TOKEN — the Renovate bot's Forgejo personal access token (the same
+#     one update-flake-inputs.yml uses) with `repo` scope, so this job can
+#     create and update the PR comment as the bot.
+
+name: nvd diff
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  # Per PR: a new push supersedes the previous diff. The single native runner
+  # serialises this against the other build/deploy workflows anyway.
+  group: nvd-diff-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  nvd-diff:
+    runs-on: native
+    # Two full system closures (base + PR) on a cold store can take a while.
+    timeout-minutes: 180
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: base
+
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+
+      - name: Build and diff
+        shell: nix shell nixpkgs#nvd nixpkgs#jq --command bash -euo pipefail {0}
+        env:
+          # Optional: space-separated list of hosts. Empty = all nixosConfigurations in the PR flake.
+          HOSTS: ""
+        run: |
+          if [ -z "$HOSTS" ]; then
+            HOSTS=$(nix eval --json ./pr#nixosConfigurations --apply builtins.attrNames | jq -r '.[]')
+          fi
+
+          base_hosts=$(nix eval --json ./base#nixosConfigurations --apply builtins.attrNames | jq -r '.[]')
+
+          out=nvd-diff.md
+          {
+            echo "<!-- nvd-diff -->"
+            echo "### nvd diff: \`${{ github.event.pull_request.base.ref }}\` → this PR"
+            echo
+          } > "$out"
+
+          for host in $HOSTS; do
+            attr="nixosConfigurations.$host.config.system.build.toplevel"
+            echo "::group::Building $host"
+            new=$(nix build --no-link --print-out-paths "./pr#$attr")
+            if ! grep -qx "$host" <<<"$base_hosts"; then
+              echo "::endgroup::"
+              printf '#### %s\n\nNew host, not present on base branch.\n\n' "$host" >> "$out"
+              continue
+            fi
+            old=$(nix build --no-link --print-out-paths "./base#$attr")
+            echo "::endgroup::"
+
+            diff=$(nvd --color never diff "$old" "$new")
+            {
+              echo "<details><summary><b>$host</b></summary>"
+              echo
+              echo '```'
+              echo "$diff"
+              echo '```'
+              echo
+              echo "</details>"
+              echo
+            } >> "$out"
+          done
+
+          # Keep comment under Forgejo's size limit.
+          if [ "$(wc -c < "$out")" -gt 60000 ]; then
+            head -c 60000 "$out" > "$out.tmp"
+            printf '\n```\n\n*Output truncated, see the workflow log.*\n' >> "$out.tmp"
+            mv "$out.tmp" "$out"
+          fi
+          cat "$out"
+
+      - name: Post or update PR comment
+        shell: nix shell nixpkgs#jq nixpkgs#curl --command bash -euo pipefail {0}
+        env:
+          TOKEN: ${{ secrets.CI_BOT_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          api="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: token $TOKEN" -H "Content-Type: application/json")
+          payload=$(jq -n --rawfile body nvd-diff.md '{body: $body}')
+
+          # Reuse the existing nvd comment on this PR instead of adding a new one each push.
+          existing=$(curl -fsS "${auth[@]}" "$api/issues/$PR/comments?limit=50" \
+            | jq -r '[.[] | select(.body | contains("<!-- nvd-diff -->"))][0].id // empty')
+
+          if [ -n "$existing" ]; then
+            curl -fsS -X PATCH "${auth[@]}" "$api/issues/comments/$existing" -d "$payload" > /dev/null
+          else
+            curl -fsS -X POST "${auth[@]}" "$api/issues/$PR/comments" -d "$payload" > /dev/null
+          fi
