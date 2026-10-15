@@ -41,6 +41,22 @@
           # the why and the bump instructions.
           opencode = pkgs.callPackage ./opencode/package.nix { };
 
+          # Password for the OpenCode server, plus the ready-made Basic header
+          # its web UI has to send. `opencode serve` ALWAYS requires a password
+          # (upstream generates a random one when none is supplied; there is no
+          # "disable auth" mode) and the UI authenticates every /api call with
+          # HTTP Basic. Coder's app proxy cannot inject request headers, so a
+          # loopback nginx in front of the server does — see the nginx config
+          # below. The value is a fixed literal on purpose: the server listens
+          # on 127.0.0.1 only and the app sits behind Coder's owner-scoped
+          # proxy, so this header is not a security boundary — it just satisfies
+          # the server's own auth layer so the dashboard app opens without a
+          # password prompt.
+          opencodePassword  = "opencode-workspace-local";
+          # base64("opencode:" + opencodePassword), spelled out because Nix has
+          # no base64 builtin. Keep the two in sync when changing the password.
+          opencodeBasicAuth = "b3BlbmNvZGU6b3BlbmNvZGUtd29ya3NwYWNlLWxvY2Fs";
+
           # Agent token on disk, readable only by the workspace user. See
           # `environment.etc."coder/agent-token"` below for why it's a file.
           agentTokenFile = "/etc/coder/agent-token";
@@ -471,6 +487,64 @@
               Environment      = "PATH=/run/current-system/sw/bin:/run/wrappers/bin";
               Restart          = "on-failure";
               RestartSec       = "2s";
+            };
+          };
+
+          # ----------------------------------------------------------------
+          # OPENCODE 2.x (coding-agent web UI + auth-injecting proxy)
+          # ----------------------------------------------------------------
+          # `opencode serve` owns the sessions and serves the OpenCode web UI on
+          # loopback:8511; nginx sits on loopback:8510 in front of it and stamps
+          # the Basic header (see opencodeBasicAuth above) on every request,
+          # including the SSE event feed and the WebSocket terminal upgrades.
+          # main.tf exposes 8510 as the subdomain-based `opencode` Coder app, so
+          # the dashboard reaches nginx through the agent tunnel and never talks
+          # to the server directly.
+          #
+          # Runs as the workspace user with HOME on the persistent virtiofs
+          # share, so sessions and the SQLite DB in ~/.local/share/opencode
+          # survive VM reboots. `coderGitEnv` is inherited for the same reason
+          # the pi-web units inherit it: the agent runs git itself.
+          systemd.services.opencode = {
+            description = "OpenCode 2.x server";
+            wantedBy    = [ "multi-user.target" ];
+            after       = [ "network-online.target" ];
+            wants       = [ "network-online.target" ];
+            environment = coderGitEnv // {
+              HOME                     = "/home/${username}";
+              OPENCODE_SERVER_PASSWORD = "$${opencodePassword}";
+            };
+            serviceConfig = {
+              User             = "${username}";
+              Group            = "${username}";
+              WorkingDirectory = "/home/${username}";
+              ExecStart        = "$${opencode}/bin/opencode serve --hostname 127.0.0.1 --port 8511";
+              Restart          = "on-failure";
+              RestartSec       = "2s";
+              Environment      = "PATH=/run/current-system/sw/bin:/run/wrappers/bin";
+            };
+          };
+
+          # See the opencode service above for why this proxy exists.
+          # proxyWebsockets turns on the Upgrade/Connection headers the
+          # terminal attaches with; proxy_buffering off keeps the SSE event feed
+          # flowing instead of being held in a buffer.
+          services.nginx = {
+            enable = true;
+            virtualHosts."opencode" = {
+              listen = [ { addr = "127.0.0.1"; port = 8510; } ];
+              locations."/" = {
+                proxyPass       = "http://127.0.0.1:8511";
+                proxyWebsockets = true;
+                extraConfig     = ''
+                  proxy_set_header Host $host;
+                  proxy_set_header Authorization "Basic $${opencodeBasicAuth}";
+                  proxy_buffering off;
+                  proxy_request_buffering off;
+                  proxy_read_timeout 3600s;
+                  proxy_send_timeout 3600s;
+                '';
+              };
             };
           };
 

@@ -443,6 +443,44 @@ resource "coder_app" "pi-web" {
   }
 }
 
+# OPENCODE 2.x — the OpenCode coding-agent web UI. The workspace VM runs
+# `opencode serve` on loopback:8511 and a small nginx on loopback:8510 in front
+# of it (see flake.nix.tftpl): opencode always requires a password and the Coder
+# app proxy cannot inject the Authorization header its web UI sends, so nginx
+# adds it. Coder proxies dashboard traffic to the nginx port through the agent
+# tunnel. Subdomain-based like the other workspace apps (path serving is
+# disabled server-side, CODER_DISABLE_PATH_APPS).
+resource "coder_app" "opencode" {
+  agent_id     = coder_agent.main.id
+  slug         = "opencode"
+  display_name = "OpenCode"
+  # A terminal prompt glyph, embedded as an SVG data URI — see
+  # local.opencode_icon. Distinct from the SSH app's /icon/terminal.svg.
+  icon      = local.opencode_icon
+  url       = "http://127.0.0.1:8510"
+  subdomain = true
+  share     = "owner"
+  open_in   = "tab"
+  # Keep OpenCode OUT of the four workspace-card quick-launch slots, exactly
+  # like the filebrowser module below: those two slots belong to "Pi Web" and
+  # "VS Code (web)" (see that module's comment). Reachable from the workspace
+  # page instead.
+  order = 100
+
+  lifecycle {
+    precondition {
+      condition     = length(local.opencode_icon) <= 256
+      error_message = "Coder's workspace_apps.icon is a varchar(256); local.opencode_icon is ${length(local.opencode_icon)} characters. Shorten local.opencode_icon_svg."
+    }
+  }
+
+  healthcheck {
+    url       = "http://127.0.0.1:8510/"
+    interval  = 5
+    threshold = 6
+  }
+}
+
 # File Browser (web file manager for /home/<owner>). Uses the official Coder
 # registry module (registry.coder.com/modules/filebrowser) so the path-mode base
 # URL is computed for us — needed here because the homelab has NO wildcard DNS
@@ -559,6 +597,13 @@ locals {
   # the linecap/linejoin attributes.
   pi_icon_svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#a371f7\" stroke-width=\"2\"><path d=\"M5 9h14M9 9q-.5 4-2.5 9M15 9q.5 4 2.5 9\"/></svg>"
   pi_icon     = "data:image/svg+xml;base64,${base64encode(local.pi_icon_svg)}"
+
+  # OpenCode's dashboard icon: a terminal prompt (chevron + underscore), in the
+  # same inline-SVG style as local.pi_icon above. Coder ships no OpenCode icon,
+  # and /icon/terminal.svg is already taken by the SSH app. Kept under the same
+  # 256-character workspace_apps.icon limit — see the pi_icon comment for why.
+  opencode_icon_svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#f0883e\" stroke-width=\"2\"><path d=\"M4 8l4 4-4 4M12 16h8\"/></svg>"
+  opencode_icon     = "data:image/svg+xml;base64,${base64encode(local.opencode_icon_svg)}"
 
   flake_nix = chomp(templatefile("${path.module}/flake.nix.tftpl", {
     vm_name               = local.vm_name_s
