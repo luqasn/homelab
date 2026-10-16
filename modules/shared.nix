@@ -19,6 +19,19 @@
 
   time.timeZone = "Europe/Berlin";
 
+  # Collect Nix garbage automatically. Without this no `nix-gc.timer` is
+  # generated and dead store paths/old generations accumulate in /nix forever
+  # (on elserver /nix is the `zroot/local/nix` dataset, and the deploy pipeline
+  # builds on elserver itself with `--build-host localhost`, so it grows fast).
+  # Policy matches the Coder workspace template
+  # (modules/coder/template/flake.nix.tftpl): weekly, drop anything unreferenced
+  # for a fortnight.
+  nix.gc = {
+    automatic = true;
+    dates = "weekly";
+    options = "--delete-older-than 14d";
+  };
+
   # Locale service discovery and mDNS
   services.avahi.enable = true;
 
