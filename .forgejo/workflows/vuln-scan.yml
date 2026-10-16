@@ -228,7 +228,7 @@ jobs:
             [ .[]
               | select((.pull_request // null) == null)
               | select(.body != null and (.body | contains("<!-- vuln-scan -->")))
-            ] | [0].number // empty
+            ] | .[0].number // empty
           ' <<<"$listing")
           prev='[]'
           existed=0
