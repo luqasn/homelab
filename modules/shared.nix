@@ -3,9 +3,19 @@
   clan-core,
   pkgs,
   lib,
+  self,
   ...
 }:
 {
+  imports = [
+    # Per-system OpenVEX feed for the vulnerability scan
+    # (.forgejo/workflows/vuln-scan.yml): adds `system.build.vexFeed`, which
+    # grype consumes via `--vex`. It only reads config/pkgs and adds a binding,
+    # so the running system is unchanged; statements it drops are surfaced as
+    # build warnings for manual triage. See the flake input note in flake.nix.
+    self.inputs.nixos-vex.nixosModules.default
+  ];
+
 #  imports = [
 #    # Enables the OpenSSH server for remote access
 #    clan-core.clanModules.sshd
