@@ -36,11 +36,15 @@
 # present (hostPackages) but `jq`/`sbomnix`/`grype` are not, so they are pulled
 # from nixpkgs through `nix shell` (same trick as nvd-diff.yml).
 #
-# grype downloads a ~1 GB vulnerability database on first use. GRYPE_DB_CACHE_DIR
-# is pointed inside the job workspace so it lands on a writable, roomy
-# filesystem (the runner is an unprivileged systemd DynamicUser whose HOME may
-# be ephemeral or read-only). The download repeats each run; that is deliberate
-# (a fresh DB is the point) and cheap next to the scan.
+# grype downloads a ~1 GB vulnerability database on first use, and it has to
+# land on a writable filesystem: the runner is an unprivileged systemd
+# DynamicUser whose HOME is ephemeral and whose filesystem view is read-only
+# outside the job workspace. Forgejo does NOT populate `github.workspace` in the
+# workflow `env:` context — it expands to the empty string, turning
+# `${{ github.workspace }}/grype-db` into the read-only "/grype-db" and failing
+# the scan with "mkdir /grype-db: read-only file system". GRYPE_DB_CACHE_DIR is
+# therefore exported from $PWD inside the step. The download repeats each run;
+# that is deliberate (a fresh DB is the point) and cheap next to the scan.
 #
 # Required setup (Forgejo repo -> Settings -> Actions -> Secrets):
 #   * CI_BOT_TOKEN — the Renovate bot's Forgejo personal access token (the same
@@ -69,8 +73,6 @@ env:
   # Space-separated list of hosts to scan. Empty = every nixosConfigurations
   # entry in this flake.
   HOSTS: ""
-  # Keep grype's ~1 GB DB inside the job workspace (writable and roomy).
-  GRYPE_DB_CACHE_DIR: ${{ github.workspace }}/grype-db
 
 jobs:
   scan:
@@ -90,6 +92,10 @@ jobs:
             hosts=$(nix eval --json .#nixosConfigurations --apply builtins.attrNames | jq -r '.[]')
           fi
 
+          # grype's DB must land on a writable filesystem; see the header note.
+          # $PWD is the job workspace (Forgejo leaves github.workspace empty).
+          export GRYPE_DB_CACHE_DIR="$PWD/grype-db"
+
           : > findings.jsonl
 
           for host in $hosts; do
@@ -97,10 +103,29 @@ jobs:
             attr="nixosConfigurations.$host.config.system.build.toplevel"
             nix build --no-link -o "result-$host" ".#$attr"
 
-            # CycloneDX SBOM of the runtime closure. sbomnix needs the
-            # derivation of the target in the store; `nix build` above put it
-            # there.
-            sbomnix "./result-$host" --cdx "sbom-$host.cdx.json" >/dev/null
+            # CycloneDX SBOM of the runtime closure.
+            #
+            # Pass the flake reference, not the built store path: given a bare
+            # store path sbomnix cannot find the nixpkgs that produced it, warns
+            # "Failed reading nix meta information" and emits an SBOM with only
+            # a minimum set of attributes. syft then falls back to junk
+            # heuristic CPEs (cpe:2.3:a:X-Restart-Triggers-postfix:...) and the
+            # scan matches almost nothing. With a flakeref sbomnix joins nixpkgs
+            # metadata for real CPEs. That join runs `nix-env -qa --meta` over
+            # all of nixpkgs, which is memory-hungry, so fall back to the built
+            # store path if it fails — the job then still reports (noisily)
+            # instead of failing.
+            sbom_ref=".#nixosConfigurations.$host.config.system.build.toplevel"
+            if ! sbomnix "$sbom_ref" \
+                   --cdx "sbom-$host.cdx.json" \
+                   --csv "sbom-$host.csv" \
+                   --spdx "sbom-$host.spdx.json"; then
+              echo "::warning::enriched SBOM failed for $host; falling back to the store path (degraded CPE matching)"
+              sbomnix "./result-$host" \
+                --cdx "sbom-$host.cdx.json" \
+                --csv "sbom-$host.csv" \
+                --spdx "sbom-$host.spdx.json"
+            fi
 
             # Per-system VEX feed (best effort): nixos-vex evaluates its
             # statements against THIS machine's config and drops the ones that
