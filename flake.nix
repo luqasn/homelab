@@ -73,6 +73,27 @@
     url = "github:NixOS/nixpkgs/33b542d89d760488ab3384304939e0bd902126ef";
   };
 
+  # nixos-vex — a per-system OpenVEX feed consumed by the scheduled
+  # vulnerability scan (.forgejo/workflows/vuln-scan.yml). Its NixOS module
+  # (imported in modules/shared.nix) adds `system.build.vexFeed`, which drops
+  # statements that cannot apply to this configuration (a CVE in xfs code while
+  # no xfs filesystem is ever mounted, sshd password auth while it is disabled,
+  # ...), so grype suppresses those findings instead of reporting them. The goal
+  # is zero *untriaged* findings, not zero findings.
+  #
+  # Follows our nixpkgs so only a single nixpkgs node lands in flake.lock — a
+  # second nixpkgs node pushes the root `nixpkgs` onto a suffixed key that
+  # Renovate's nix manager cannot associate (see the hoopsnake note above), and
+  # makes it stop proposing nixpkgs updates. nixos-vex's own pins (unstable, and
+  # a separate tools nixpkgs for its `packages`) are irrelevant here: the module
+  # only inspects the *consuming* system's config and pkgs.
+  inputs.nixos-vex = {
+    url = "github:datosh/nixos-vex";
+    inputs.nixpkgs.follows = "nixpkgs";
+    inputs.nixpkgs-tools.follows = "nixpkgs";
+    inputs.sbomnix.inputs.nixpkgs.follows = "nixpkgs";
+  };
+
   outputs =
     {
       self,
