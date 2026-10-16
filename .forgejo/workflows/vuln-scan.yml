@@ -1,0 +1,276 @@
+# Scan every machine's system closure for known vulnerabilities and report
+# them on a single, updated-in-place Forgejo issue.
+#
+# Why this exists next to nvd-diff.yml: `nvd diff` only shows package version
+# changes between a PR and its base, and only runs on pull requests. A CVE
+# published *after* a package was pinned is invisible to it — which is the
+# common case (nixpkgs advisories are routinely filed against versions that are
+# already in nixos-26.05). Catching those needs a scheduled scan of the
+# *running* closure, diffed against the previous scan so only genuinely new
+# findings trigger a notification.
+#
+# Pipeline, per machine:
+#   1. build the system toplevel (`nix build ...config.system.build.toplevel` —
+#      evaluate-only, no secrets, exactly as build-machines.yml does),
+#   2. `sbomnix` -> CycloneDX SBOM of the runtime closure,
+#   3. `nix build ...config.system.build.vexFeed` (nixos-vex; see flake.nix and
+#      modules/shared.nix) and hand it to grype via `--vex`, so findings that
+#      cannot apply to this configuration are suppressed,
+#   4. `grype sbom:...` -> findings, normalized with jq.
+#
+# Notification model: the job keeps ONE open tracking issue (found by its
+# `<!-- vuln-scan -->` body marker). Every run rewrites that issue's body with
+# the current findings and appends a one-line JSON baseline (also inside the
+# body, as `<!-- vuln-baseline: ... -->`). Editing a body does NOT notify
+# watchers, so a *comment* is posted only when the outcome changed since the
+# previous scan (new findings, or findings that disappeared). That keeps the
+# issue as the single source of truth without a daily noise comment. Forgejo
+# already emails issue comments (the forgejo service uses the host sendmail —
+# see modules/forgejo.nix), so this doubles as email alerting.
+#
+# Runs on the in-house native runner (label "native:host"), i.e. directly on
+# elserver, so the toplevels are already in the host's nix store.
+#
+# The runner service PATH only contains coreutils/findutils/gnugrep/gnused/
+# systemd plus the configured `hostPackages` (see modules/forgejo.nix): `nix` is
+# present (hostPackages) but `jq`/`sbomnix`/`grype` are not, so they are pulled
+# from nixpkgs through `nix shell` (same trick as nvd-diff.yml).
+#
+# grype downloads a ~1 GB vulnerability database on first use. GRYPE_DB_CACHE_DIR
+# is pointed inside the job workspace so it lands on a writable, roomy
+# filesystem (the runner is an unprivileged systemd DynamicUser whose HOME may
+# be ephemeral or read-only). The download repeats each run; that is deliberate
+# (a fresh DB is the point) and cheap next to the scan.
+#
+# Required setup (Forgejo repo -> Settings -> Actions -> Secrets):
+#   * CI_BOT_TOKEN — the Renovate bot's Forgejo personal access token (the same
+#     one update-flake-inputs.yml and nvd-diff.yml use), `repo` scope, so this
+#     job can create/update the tracking issue and comment on it as the bot.
+
+name: Vulnerability scan
+
+on:
+  schedule:
+    # Daily at 05:00 UTC. CVEs do not need finer granularity, and the DB is
+    # re-downloaded on every run.
+    - cron: "0 5 * * *"
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  # A distinct group from build/deploy so a scheduled scan never cancels a
+  # deploy; the single native runner serialises them anyway.
+  group: vuln-scan
+  cancel-in-progress: false
+
+env:
+  # Space-separated list of hosts to scan. Empty = every nixosConfigurations
+  # entry in this flake.
+  HOSTS: ""
+  # Keep grype's ~1 GB DB inside the job workspace (writable and roomy).
+  GRYPE_DB_CACHE_DIR: ${{ github.workspace }}/grype-db
+
+jobs:
+  scan:
+    runs-on: native
+    # Two system closures plus a cold grype DB; same budget as the other
+    # whole-system jobs.
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Scan every machine
+        shell: nix shell nixpkgs#sbomnix nixpkgs#grype nixpkgs#jq --command bash -euo pipefail {0}
+        run: |
+          hosts="$HOSTS"
+          if [ -z "$hosts" ]; then
+            hosts=$(nix eval --json .#nixosConfigurations --apply builtins.attrNames | jq -r '.[]')
+          fi
+
+          : > findings.jsonl
+
+          for host in $hosts; do
+            echo "::group::Scanning $host"
+            attr="nixosConfigurations.$host.config.system.build.toplevel"
+            nix build --no-link -o "result-$host" ".#$attr"
+
+            # CycloneDX SBOM of the runtime closure. sbomnix needs the
+            # derivation of the target in the store; `nix build` above put it
+            # there.
+            sbomnix "./result-$host" --cdx "sbom-$host.cdx.json" >/dev/null
+
+            # Per-system VEX feed (best effort): nixos-vex evaluates its
+            # statements against THIS machine's config and drops the ones that
+            # cannot apply, so grype suppresses them instead of reporting them.
+            # A failure here degrades to a noisier scan, not a failed job.
+            vex=()
+            if nix build --no-link -o "vex-$host.json" \
+                 ".#nixosConfigurations.$host.config.system.build.vexFeed"; then
+              vex=(--vex "vex-$host.json")
+            else
+              echo "::warning::vexFeed unavailable for $host; scanning without VEX"
+            fi
+
+            grype "sbom:sbom-$host.cdx.json" "${vex[@]}" -o json > "grype-$host.json"
+
+            jq -c --arg host "$host" '.matches[] | {
+              host: $host,
+              id: .vulnerability.id,
+              severity: (.vulnerability.severity // "Unknown"),
+              fix: (.vulnerability.fix.state // "unknown"),
+              package: .artifact.name,
+              version: .artifact.version
+            }' "grype-$host.json" >> findings.jsonl
+            echo "::endgroup::"
+          done
+
+          # De-duplicate (one CVE can match several components) and sort by
+          # severity for a stable, diff-friendly order.
+          jq -s '
+            unique_by(.host + "|" + .id + "|" + .package + "|" + .version + "|" + .fix)
+            | sort_by(
+                ({"Critical":0,"High":1,"Medium":2,"Low":3,"Negligible":4,"Unknown":5}[.severity] // 6),
+                .host, .id, .package, .version
+              )
+          ' findings.jsonl > findings.json
+
+          total=$(jq 'length' findings.json)
+
+          {
+            echo "<!-- vuln-scan -->"
+            echo "## Automated vulnerability scan"
+            echo
+            echo "Scanned \`${{ github.sha }}\` on $(date -u +%Y-%m-%dT%H:%MZ)."
+            echo "Total findings (after VEX suppression): **$total**."
+            echo
+            if [ "$total" -gt 0 ]; then
+              echo "### By severity"
+              echo
+              echo "| Severity | Count |"
+              echo "| --- | --- |"
+              jq -r '
+                group_by(.severity)
+                | map({severity: .[0].severity, n: length})
+                | sort_by(({"Critical":0,"High":1,"Medium":2,"Low":3,"Negligible":4,"Unknown":5}[.severity]) // 6)
+                | .[] | "| \(.severity) | \(.n) |"
+              ' findings.json
+              echo
+              echo "### By host"
+              echo
+              echo "| Host | Count |"
+              echo "| --- | --- |"
+              jq -r 'group_by(.host) | .[] | "| \(.[0].host) | \(length) |"' findings.json
+              echo
+              echo "<details><summary>All findings</summary>"
+              echo
+              echo "| Severity | Host | CVE | Package | Version | Fix |"
+              echo "| --- | --- | --- | --- | --- | --- |"
+              jq -r '
+                .[0:200][]
+                | "| \(.severity) | \(.host) | \(.id) | `\(.package)` | \(.version) | \(.fix) |"
+              ' findings.json
+              if [ "$total" -gt 200 ]; then
+                echo
+                echo "_Table truncated to 200 rows._"
+              fi
+              echo
+              echo "</details>"
+            else
+              echo "No known vulnerabilities in any scanned closure."
+            fi
+          } > body.md
+
+          echo "total findings: $total"
+
+      - name: Publish / update the tracking issue
+        shell: nix shell nixpkgs#jq nixpkgs#curl --command bash -euo pipefail {0}
+        env:
+          TOKEN: ${{ secrets.CI_BOT_TOKEN }}
+        run: |
+          api="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: token $TOKEN" -H "Content-Type: application/json")
+
+          current=$(jq -c '.' findings.json)
+
+          # Find an existing open tracking issue by its marker, and read the
+          # previous baseline out of the issue body. Issues include PRs in this
+          # listing, so those are filtered out.
+          listing=$(curl -fsS "${auth[@]}" "$api/issues?state=open&limit=50")
+          num=$(jq -r '
+            [ .[]
+              | select((.pull_request // null) == null)
+              | select(.body != null and (.body | contains("<!-- vuln-scan -->")))
+            ] | [0].number // empty
+          ' <<<"$listing")
+          prev='[]'
+          existed=0
+          if [ -n "$num" ]; then
+            existed=1
+            obody=$(jq -r --argjson n "$num" '.[] | select(.number == $n) | .body' <<<"$listing")
+            prev=$(sed -n 's/.*<!-- vuln-baseline: \(.*\) -->.*/\1/p' <<<"$obody" | head -n1)
+            [ -n "$prev" ] || prev='[]'
+          fi
+
+          # Identity of a finding across runs. Severity is excluded so a
+          # severity re-rating does not count as new, but fix state is included
+          # so a fix becoming available DOES alert (that is the actionable
+          # transition).
+          new=$(jq -c -n --argjson cur "$current" --argjson prev "$prev" '
+            def k: .host + "|" + .id + "|" + .package + "|" + .version + "|" + .fix;
+            ($prev | map(k)) as $pk
+            | $cur | map(select(k as $x | ($pk | index($x)) == null))
+          ')
+          resolved=$(jq -c -n --argjson cur "$current" --argjson prev "$prev" '
+            def k: .host + "|" + .id + "|" + .package + "|" + .version + "|" + .fix;
+            ($cur | map(k)) as $ck
+            | $prev | map(select(k as $x | ($ck | index($x)) == null))
+          ')
+
+          # Issue body = the report plus a one-line JSON baseline the next run
+          # diffs against.
+          {
+            cat body.md
+            printf '\n<!-- vuln-baseline: '
+            jq -c '.' findings.json
+            printf ' -->\n'
+          } > issue-body.md
+
+          payload=$(jq -n --rawfile body issue-body.md \
+            '{title: "Automated vulnerability scan", body: $body}')
+          if [ "$existed" -eq 0 ]; then
+            num=$(curl -fsS -X POST "${auth[@]}" "$api/issues" -d "$payload" | jq -r '.number')
+            echo "Created tracking issue #$num"
+          else
+            curl -fsS -X PATCH "${auth[@]}" "$api/issues/$num" -d "$payload" >/dev/null
+            echo "Updated tracking issue #$num"
+          fi
+
+          # Comment only when the outcome changed, and only on an issue that
+          # already existed — a freshly created issue already lists everything.
+          # A comment (unlike a body edit) notifies watchers.
+          n_new=$(jq 'length' <<<"$new")
+          n_res=$(jq 'length' <<<"$resolved")
+          if [ "$existed" -eq 1 ] && { [ "$n_new" -gt 0 ] || [ "$n_res" -gt 0 ]; }; then
+            {
+              if [ "$n_new" -gt 0 ]; then
+                echo "### New since the previous scan ($n_new)"
+                echo
+                jq -r '.[] | "- **\(.severity)** — \(.id) in `\(.package)` \(.version) on \(.host) (fix: \(.fix))"' <<<"$new"
+                echo
+              fi
+              if [ "$n_res" -gt 0 ]; then
+                echo "### Resolved since the previous scan ($n_res)"
+                echo
+                jq -r '.[] | "- \(.id) in `\(.package)` \(.version) on \(.host)"' <<<"$resolved"
+                echo
+              fi
+            } > comment.md
+            comment=$(jq -n --rawfile body comment.md '{body: $body}')
+            curl -fsS -X POST "${auth[@]}" "$api/issues/$num/comments" -d "$comment" >/dev/null
+            echo "Posted update comment (new=$n_new resolved=$n_res)"
+          else
+            echo "No change since the previous scan; not commenting."
+          fi
