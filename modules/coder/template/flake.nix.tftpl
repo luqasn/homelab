@@ -521,6 +521,13 @@
               ExecStart        = "$${opencode}/bin/opencode serve --hostname 127.0.0.1 --port 8511";
               Restart          = "on-failure";
               RestartSec       = "2s";
+              # The agent runs memory-hungry `nix` builds through its shell tool
+              # inside this unit's cgroup. When one trips the kernel OOM killer,
+              # the systemd default OOMPolicy=stop tears down the whole server,
+              # aborting every in-flight session step ("Step interrupted"). With
+              # OOMPolicy=continue only the OOM-killed child dies and the server
+              # (and the user's sessions) survive.
+              OOMPolicy        = "continue";
               Environment      = "PATH=/run/current-system/sw/bin:/run/wrappers/bin";
             };
           };

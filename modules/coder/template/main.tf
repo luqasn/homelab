@@ -53,15 +53,19 @@ data "coder_parameter" "hypervisor" {
 data "coder_parameter" "memory_mb" {
   name         = "memory_mb"
   display_name = "Memory (MiB)"
-  description  = "RAM allocated to the VM. Minimum 1024 MiB."
-  default      = "2048"
+  description  = "RAM allocated to the VM. Minimum 1024 MiB. The default leaves headroom for the OpenCode server (~1.2 GiB) plus in-session Nix builds; 2048 MiB causes the kernel OOM killer to restart the OpenCode service."
+  default      = "4096"
   type         = "number"
-  mutable      = false
+  # Mutable so an existing workspace can be resized in place: the
+  # null_resource.microvm trigger rebuilds the microvm with the new `mem` while
+  # the destroy provisioner keeps workspace data. Unlike a disk volume, RAM has
+  # no resize-with-implications, so this stays bidirectional (no `monotonic`)
+  # and lets you both raise and lower it.
+  mutable      = true
 
   validation {
     min       = 1024
     max       = 65536
-    monotonic = "increasing"
   }
 }
 
