@@ -5,7 +5,7 @@
 # changes between a PR and its base, and only runs on pull requests. A CVE
 # published *after* a package was pinned is invisible to it — which is the
 # common case (nixpkgs advisories are routinely filed against versions that are
-# already in nixos-26.05). Catching those needs a scheduled scan of the
+# already in nixos-unstable). Catching those needs a scheduled scan of the
 # *running* closure, diffed against the previous scan so only genuinely new
 # findings trigger a notification.
 #
