@@ -205,14 +205,21 @@ jobs:
             -i "$HOME/.ssh/homelab_deploy" \
             root@elserver '/run/current-system/sw/bin/systemctl start turn-off.service'
 
-      - name: Schedule runner restart
+      - name: Schedule idle-gated runner restart
         # The runner deliberately survives its own switch (modules/forgejo.nix
         # sets restartIfChanged = false) so switch-to-configuration cannot stop
         # it and cancel this job mid-deploy. It therefore keeps running the
-        # previous generation; restart it as a detached transient unit so it
-        # picks up any changes (hostPackages, binary, ...) once this job has
-        # finished. `if: always()` so a failed/partial deploy also gets a fresh
-        # runner. The 60s delay lets this workflow finish before the restart.
+        # previous generation. Start the unit defined in modules/forgejo.nix that
+        # restarts it once Forgejo reports no task left queued or running, so it
+        # picks up any changes (hostPackages, binary, ...) without cancelling the
+        # other push-to-main workflows sitting behind this deploy. `if: always()`
+        # so a failed/partial deploy also gets a fresh runner.
+        #
+        # `--no-block` is essential: the gate runs on the host and would
+        # otherwise wait for this very job to finish (it is a `native` task too)
+        # while this step waits for the gate — a deadlock. Returning immediately
+        # lets the job end, freeing the runner for the queued tasks the gate is
+        # waiting on.
         if: always()
         run: |
           set -euo pipefail
@@ -225,4 +232,4 @@ jobs:
             -o StrictHostKeyChecking=accept-new \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -i "$HOME/.ssh/homelab_deploy" \
-            root@elserver '/run/current-system/sw/bin/systemd-run --on-active=60 --collect /run/current-system/sw/bin/systemctl restart "gitea-runner-forgejo\x2dlocal.service"'
+            root@elserver '/run/current-system/sw/bin/systemctl --no-block start forgejo-runner-restart-when-idle.service'
