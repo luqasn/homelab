@@ -146,6 +146,31 @@ jobs:
             -i "$HOME/.ssh/homelab_deploy" \
             root@elserver '/run/current-system/sw/bin/systemctl start turn-on.service'
 
+      - name: Snapshot ZFS datasets before deploy
+        # Take a local zfs-autobackup snapshot on elserver before any machine is
+        # switched, so a deploy that corrupts data can be rolled back to the
+        # state right before it.
+        #
+        # Omitting the TARGET-PATH puts zfs-autobackup in snapshot-only mode: it
+        # creates the same `offsite-...` snapshots the nightly backup uses, but
+        # sends nothing. (The next nightly offsite run replicates them, and the
+        # shared `offsite` label keeps them within the normal retention.)
+        # --allow-empty guarantees a snapshot exists even when nothing changed
+        # since the last nightly run, so every deploy has a distinct rollback
+        # point. zfs-autobackup is in elserver's environment.systemPackages
+        # (modules/homelab.nix), so it is already on the host.
+        run: |
+          set -euo pipefail
+          export PATH="/run/current-system/sw/bin:$PATH"
+          # Explicit ssh options, see the power-on step above.
+          ssh -F /dev/null \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -i "$HOME/.ssh/homelab_deploy" \
+            root@elserver '/run/current-system/sw/bin/zfs-autobackup -v --allow-empty offsite'
+
       - name: Update all machines
         run: |
           set -euo pipefail
