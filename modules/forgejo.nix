@@ -223,6 +223,17 @@ in
       # hours, and each job is capped at 3h.
       TimeoutStartSec = "12h";
     };
+    # Never let switch-to-configuration touch this unit, exactly like the runner
+    # itself above. switch-to-configuration-ng starts a changed unit and blocks
+    # (`block_on_jobs`) until its start job finishes; for a oneshot that means
+    # until ExecStart returns. This gate's ExecStart only returns once no
+    # `native` task is queued or running — but a self-deploy is itself a
+    # `native` task, so a restarted gate waits for the deploy that is restarting
+    # it, forever. It then keeps holding
+    # /run/nixos/switch-to-configuration.lock, so every later deploy fails at
+    # `boot` with "Could not acquire lock" (exit 11). The workflow starts the
+    # gate with `systemctl --no-block start`; that is the only start it needs.
+    restartIfChanged = false;
     script = ''
       set -euo pipefail
       api="https://${forgejoDomain}/api/v1/repos/${forgejoRepo}"
