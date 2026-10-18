@@ -1,13 +1,16 @@
 {
   inputs.clan-core = {
-    url = "https://git.clan.lol/clan/clan-core/archive/26.05.tar.gz";
+    # Clan publishes release branches named after NixOS channels. `main` tracks
+    # nixos-unstable, matching our nixpkgs pin above (26.05 would track the
+    # stable channel).
+    url = "https://git.clan.lol/clan/clan-core/archive/main.tar.gz";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  # Take nixpkgs straight from upstream (nixos-26.05) instead of inheriting the
-  # copy bundled by clan-core. Every other input that consumes a nixpkgs
+  # Take nixpkgs straight from upstream (nixos-unstable) instead of inheriting
+  # the copy bundled by clan-core. Every other input that consumes a nixpkgs
   # follows this one, so only a single nixpkgs lands in `flake.lock`.
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   # Semi-secret data (PII such as the public domains and the upstream mail
   # host) lives in-tree in homelab-private.nix and is scrubbed by the GitHub
@@ -27,7 +30,10 @@
   };
 
   inputs.nixos-mailserver = {
-    url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-26.05";
+    # nixos-mailserver tracks NixOS unstable on `main` (there is no
+    # `nixos-unstable` branch; release branches are named after stable
+    # channels, e.g. `nixos-26.05`).
+    url = "gitlab:simple-nixos-mailserver/nixos-mailserver/main";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
@@ -56,22 +62,6 @@
   # agents share a small overlay pinned to a specific upstream GitHub release
   # (modules/coder/template/coder-overlay.nix), so advancing coder doesn't
   # require waiting on nixos-unstable. Bump it by editing that overlay.
-  inputs.nixpkgs-immich-kiosk = {
-    url = "github:NixOS/nixpkgs/389ed85304b281ca7f306cf8a1eb4378651ca44e";
-  };
-
-  # Pinned to the exact nixpkgs commit that shipped meilisearch 1.45.2 — the
-  # format version of the on-disk Meilisearch database used by Karakeep (see
-  # modules/karakeep.nix). The homelab's pinned nixpkgs (nixos-26.05) ships
-  # 1.43.1, which refuses to open the newer database
-  # ("Database version ... is higher ... Downgrade is not supported").
-  #
-  # This input exists ONLY to provide `meilisearch`; nothing else should use it.
-  # Drop it once nixpkgs ships meilisearch >= 1.45.2. Pinning to the
-  # bump commit (instead of a channel) keeps the provided version fixed.
-  inputs.nixpkgs-meilisearch = {
-    url = "github:NixOS/nixpkgs/33b542d89d760488ab3384304939e0bd902126ef";
-  };
 
   # nixos-vex — a per-system OpenVEX feed consumed by the scheduled
   # vulnerability scan (.forgejo/workflows/vuln-scan.yml). Its NixOS module
@@ -99,7 +89,6 @@
       self,
       clan-core,
       nixpkgs,
-      nixpkgs-immich-kiosk,
       ...
     }@inputs:
     let

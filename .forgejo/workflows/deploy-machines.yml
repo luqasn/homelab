@@ -46,8 +46,8 @@
 #     as `$HOME/.ssh/homelab_deploy` and passed explicitly on the clan command
 #     line: `clan ssh --ssh-option IdentityFile <path>` and
 #     `clan machines update --target-host root@<host>?IdentityFile=<path>`.
-#     (clan 26.05 has no SSH-options environment variable for `machines
-#     update`, and the flake's targetHost is intentionally left clean.) This
+#     (`machines update` has no SSH-options environment variable or flag, and
+#     the flake's targetHost is intentionally left clean.) This
 #     keeps the deploy working even though /etc/ssh/ssh_config on elserver
 #     points at the root-only, unreadable clan secret
 #     /run/secrets/vars/ssh-key-root/id_ed25519.
@@ -125,12 +125,10 @@ jobs:
           # Reuse the nightly backup's turn-on.service (wired into
           # offsite-backup.target) so the host is up before it is updated.
           #
-          # Plain `ssh`, not `clan ssh -c`: in clan 26.05 `clan ssh -c <cmd>`
-          # EXECs the whole command as a single argv element (it never runs a
-          # shell), so a multi-word command fails with "not found", and its exit
-          # status is ignored anyway (interactive_ssh uses
-          # subprocess.run(check=False)), making the failure silent. ssh runs
-          # the command through the remote shell and propagates the exit status.
+          # Plain `ssh`, not `clan ssh -c`: the latter ignores the remote
+          # command's exit status (interactive_ssh uses subprocess.run(check=False)),
+          # so a failed power-on would be silent. ssh runs the command through the
+          # remote shell and propagates the exit status.
           #
           # Everything is passed explicitly and `-F /dev/null` ignores every ssh
           # config file. Two reasons: (1) the runner is a systemd DynamicUser
@@ -180,8 +178,8 @@ jobs:
           # cannot prompt in CI and makes offsite-backup fail with
           # "Host key verification failed" on its first contact.
           #
-          # `machines update` has no --ssh-option in clan 26.05, so the deploy
-          # key is passed via --target-host (same user@host?Opt=value syntax as
+          # `machines update` has no --ssh-option flag, so the deploy key is
+          # passed via --target-host (same user@host?Opt=value syntax as
           # targetHost). --target-host accepts only one machine, hence the loop
           # over the inventory. Machine names match their target hosts here
           # (root@elserver / root@offsite-backup).

@@ -1,7 +1,5 @@
 {
   config,
-  pkgs,
-  inputs,
   lib,
   ...
 }:
@@ -11,7 +9,6 @@ let
     inherit config;
     inherit lib;
   };
-  pkgs-immich-kiosk = inputs.nixpkgs-immich-kiosk.legacyPackages.${pkgs.stdenv.hostPlatform.system};
 in
 {
   services.immich = {
@@ -61,7 +58,6 @@ in
 
   services.immich-kiosk = {
     enable = true;
-    package = pkgs-immich-kiosk.immich-kiosk;
     settings = {
       immich_url = "http://localhost:${toString config.services.immich.port}";
       immich_api_key._secret = config.sops.secrets.immich-api-key.path;
