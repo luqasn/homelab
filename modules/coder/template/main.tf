@@ -728,13 +728,25 @@ resource "null_resource" "microvm" {
   # so it's valid at both create and destroy time (Terraform forbids local.*/var.*
   # in destroy provisioners and their connections; triggers are set at create
   # and preserved to destroy).
+  #
+  # `file()` is evaluated during plan/destroy too, not just when the create
+  # provisioners run. A workspace created by an older template has the key path
+  # from that deployment in its state; if that path later disappears (clan-core
+  # moved shared vars to /run/secrets/vars/shared/...), Terraform fails before
+  # it can even run the destroy provisioner. Fall back to the stable symlink
+  # set up by modules/coder/server.nix, then to the current clan path for
+  # workspaces whose state predates that symlink.
   connection {
-    type        = "ssh"
-    host        = self.triggers.ssh_host
-    port        = self.triggers.ssh_port
-    user        = self.triggers.ssh_user
-    private_key = file(self.triggers.ssh_private_key_path)
-    timeout     = "3m"
+    type = "ssh"
+    host = self.triggers.ssh_host
+    port = self.triggers.ssh_port
+    user = self.triggers.ssh_user
+    private_key = try(
+      file(self.triggers.ssh_private_key_path),
+      file("/var/lib/coder/.ssh/coder-provisioner"),
+      file("/run/secrets/vars/shared/coder-provisioner-key/id_ed25519")
+    )
+    timeout = "3m"
   }
 
   # ------------------------------------------------------------------
