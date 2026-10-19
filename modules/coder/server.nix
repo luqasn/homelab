@@ -53,7 +53,7 @@ let
       --directory "${templateDir}" \
       --var host_ssh_address="''${CODER_VM_HOST}" \
       --var host_ssh_user=root \
-      --var host_ssh_private_key_path="${provisionerKey.files."id_ed25519".path}" \
+      --var host_ssh_private_key_path="${cfg.dataDir}/.ssh/coder-provisioner" \
       --var bridge_name=${cfg.bridgeName} \
       --var bridge_subnet=${cfg.bridgeSubnet} \
       --var coder_server_ip=${config.common.internalIp} \
@@ -209,6 +209,18 @@ in
     # The `coder` user/group are created by provisioner-key.nix (shared with
     # offsite-backup). Add the home directory for the server's state dir here.
     users.users.coder.home = cfg.dataDir;
+
+    # Stable path for the provisioner SSH key. The clan var's own path is
+    # version-dependent (a clan-core update moved shared vars from
+    # /run/secrets/vars/<generator> to /run/secrets/vars/shared/<generator>).
+    # A workspace records the key path passed at creation in its Terraform
+    # state, so when that path later disappears Terraform can no longer read
+    # the key even to destroy the workspace. Give the template a path that
+    # never changes and point it at whatever location clan currently uses.
+    systemd.tmpfiles.rules = [
+      "d ${cfg.dataDir}/.ssh 0700 coder coder -"
+      "L+ ${cfg.dataDir}/.ssh/coder-provisioner - - - - ${provisionerKey.files."id_ed25519".path}"
+    ];
 
     # PostgreSQL database for Coder. Peer auth over the local socket: the
     # `coder` system user maps to the `coder` DB role via `superuser_map`
