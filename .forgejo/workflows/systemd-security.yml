@@ -1,0 +1,300 @@
+# Build a `systemd-analyze security` overview of the services enabled by the
+# current NixOS configuration and publish it as a single, updated-in-place
+# Forgejo issue.
+#
+# For every machine, the workflow builds the final systemd unit directory
+# (`config.environment.etc."systemd/system".source`, the same `system-units`
+# store the running system uses). That directory contains the upstream unit
+# files, the NixOS-generated units and the NixOS drop-ins, so the analyzer sees
+# the effective hardening settings instead of only the small NixOS override.
+# It then analyzes each active `.service` unit with
+# `systemd-analyze security --offline=yes`.
+#
+# "Active" means the unit is enabled through a `.wants`, `.requires` or
+# `.upholds` symlink in that unit directory. Set ACTIVE_ONLY=false to analyze
+# every defined service unit instead and show the Enabled column for all of
+# them.
+#
+# The issue body is rewritten on every run (body edits do not notify watchers).
+# The full `systemd-analyze security` output is only embedded for the worst
+# DETAIL_MAX services at or above DETAIL_THRESHOLD; the complete list is in the
+# summary table.
+#
+# Runs on the in-house native runner (label "native:host"), i.e. directly on
+# elserver, so `systemd-analyze` and `nix` are already present and the system
+# store normally already contains the unit derivations. `jq` and `curl` are
+# pulled from nixpkgs with `nix shell`.
+#
+# Required setup (Forgejo repo -> Settings -> Actions -> Secrets):
+#   * CI_BOT_TOKEN — a Forgejo personal access token with `repo` scope, used to
+#     create/update the tracking issue as the bot. The same secret is used by
+#     the vulnerability scan and nvd-diff workflows.
+
+name: systemd security overview
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    # Weekly; systemd hardening changes only when the config changes, and the
+    # push trigger already covers those.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: systemd-security-overview
+  cancel-in-progress: false
+
+env:
+  # Space-separated list of hosts. Empty = every nixosConfigurations entry.
+  HOSTS: ""
+  # true = only services enabled through .wants/.requires/.upholds.
+  ACTIVE_ONLY: "true"
+  # Only include the full analyzer output for services at/above this score,
+  # and at most this many of them (keeps the issue body under Forgejo's limit).
+  DETAIL_THRESHOLD: "5.0"
+  DETAIL_MAX: "3"
+
+jobs:
+  overview:
+    runs-on: native
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate security overview
+        shell: nix shell nixpkgs#jq --command bash -euo pipefail {0}
+        run: |
+          export PATH="/run/current-system/sw/bin:$PATH"
+
+          hosts="$HOSTS"
+          if [ -z "$hosts" ]; then
+            hosts=$(nix eval --json .#nixosConfigurations --apply builtins.attrNames | jq -r '.[]')
+          fi
+
+          active_only="${ACTIVE_ONLY:-true}"
+          threshold="${DETAIL_THRESHOLD:-5.0}"
+          detail_max="${DETAIL_MAX:-3}"
+
+          workdir="$PWD/systemd-security-work"
+          rm -rf "$workdir"
+          mkdir -p "$workdir/details"
+          : > results.jsonl
+          : > hosts.jsonl
+          : > skipped.jsonl
+
+          for host in $hosts; do
+            echo "::group::Analyzing $host"
+
+            # The final unit directory: upstream units + generated units +
+            # drop-in overrides, exactly as installed on the target system.
+            if ! units_dir=$(nix build --no-link --print-out-paths \
+                 ".#nixosConfigurations.$host.config.environment.etc.\"systemd/system\".source"); then
+              echo "::warning::could not build the systemd unit directory for $host"
+              jq -cn --arg host "$host" --arg reason "unit directory build failed" \
+                '{host: $host, reason: $reason}' >> skipped.jsonl
+              echo "::endgroup::"
+              continue
+            fi
+
+            all_count=$(find "$units_dir" -maxdepth 1 \( -type f -o -type l \) \
+              -name '*.service' | wc -l)
+
+            # Units pulled in by an enabled target: this is the "active" set.
+            find "$units_dir" -maxdepth 2 -type l \
+              \( -path '*.wants/*.service' -o -path '*.requires/*.service' -o -path '*.upholds/*.service' \) \
+              -printf '%f\n' | sort -u > "$workdir/active-$host.txt"
+            active_count=$(wc -l < "$workdir/active-$host.txt")
+
+            if [ "$active_only" = "true" ]; then
+              units_list="$workdir/active-$host.txt"
+            else
+              find "$units_dir" -maxdepth 1 \( -type f -o -type l \) \
+                -name '*.service' -printf '%f\n' | sort -u > "$workdir/all-$host.txt"
+              units_list="$workdir/all-$host.txt"
+            fi
+
+            analyzed=0
+            i=0
+            while IFS= read -r unit; do
+              [ -n "$unit" ] || continue
+              unit_path="$units_dir/$unit"
+              if [ ! -e "$unit_path" ]; then
+                echo "::warning::unit $host/$unit is listed but has no unit file"
+                jq -cn --arg host "$host" --arg unit "$unit" --arg reason "missing unit file" \
+                  '{host: $host, unit: $unit, reason: $reason}' >> skipped.jsonl
+                continue
+              fi
+              if [ "$(readlink -f "$unit_path" 2>/dev/null || true)" = "/dev/null" ]; then
+                jq -cn --arg host "$host" --arg unit "$unit" --arg reason "masked" \
+                  '{host: $host, unit: $unit, reason: $reason}' >> skipped.jsonl
+                continue
+              fi
+
+              i=$((i + 1))
+              analyzed=$((analyzed + 1))
+              detail_file="$workdir/details/$host-$i.txt"
+
+              if ! systemd-analyze security --offline=yes "$unit_path" > "$detail_file" 2>&1; then
+                echo "::warning::systemd-analyze security failed for $host/$unit"
+              fi
+
+              overall=$(grep -E 'Overall exposure level for ' "$detail_file" | tail -n1 || true)
+              if [ -n "$overall" ]; then
+                score=$(sed -E 's/.*: ([0-9.]+) [A-Z]+.*/\1/' <<<"$overall")
+                level=$(sed -E 's/.*: [0-9.]+ ([A-Z]+).*/\1/' <<<"$overall")
+              else
+                score="n/a"
+                level="UNKNOWN"
+              fi
+              failed=$(grep -c '^✗' "$detail_file" || true)
+
+              if grep -qxF "$unit" "$workdir/active-$host.txt"; then
+                enabled=true
+              else
+                enabled=false
+              fi
+
+              if [ "$score" = "n/a" ]; then
+                score_json=null
+              else
+                score_json="$score"
+              fi
+
+              jq -cn \
+                --arg host "$host" \
+                --arg unit "$unit" \
+                --arg level "$level" \
+                --argjson score "$score_json" \
+                --argjson failed "$failed" \
+                --argjson enabled "$enabled" \
+                --arg detail "$detail_file" \
+                '{host: $host, unit: $unit, score: $score, level: $level, failed: $failed, enabled: $enabled, detail: $detail}' \
+                >> results.jsonl
+            done < "$units_list"
+
+            jq -cn \
+              --arg host "$host" \
+              --argjson all "$all_count" \
+              --argjson active "$active_count" \
+              --argjson analyzed "$analyzed" \
+              '{host: $host, all: $all, active: $active, analyzed: $analyzed}' \
+              >> hosts.jsonl
+
+            echo "::endgroup::"
+          done
+
+          jq -s '.' results.jsonl > results.json
+          jq -s '.' hosts.jsonl > hosts.json
+          jq -s '.' skipped.jsonl > skipped.json
+
+          total=$(jq 'length' results.json)
+          skipped_total=$(jq 'length' skipped.json)
+
+          {
+            echo "<!-- systemd-security -->"
+            echo "## systemd security overview"
+            echo
+            echo "Evaluated \`${{ github.sha }}\` on $(date -u +%Y-%m-%dT%H:%MZ)."
+            echo
+            echo "- Active-only filter: \`$active_only\`"
+            echo "- Services analyzed: **$total**"
+            echo "- Skipped units: **$skipped_total**"
+            echo "- Detail threshold: **$threshold** (top **$detail_max** services only)"
+            echo
+            echo "Scores come from \`systemd-analyze security --offline=yes\` on the"
+            echo "effective unit files from each configuration's \`system-units\` store."
+            echo "They are a hardening indicator, not a vulnerability rating."
+            echo
+
+            echo "### Per host"
+            echo
+            echo "| Host | Defined | Active | Analyzed |"
+            echo "| --- | ---: | ---: | ---: |"
+            jq -r '.[] | "| \(.host) | \(.all) | \(.active) | \(.analyzed) |"' hosts.json
+            echo
+
+            echo "### All services"
+            echo
+            echo "| Host | Service | Score | Level | Failed checks | Enabled |"
+            echo "| --- | --- | ---: | --- | ---: | --- |"
+            jq -r '
+              sort_by(-(.score // -1))[]
+              | "| \(.host) | `\(.unit)` | \(.score // "n/a") | \(.level) | \(.failed) | \(if .enabled then "yes" else "no" end) |"
+            ' results.json
+            echo
+
+            echo "### Worst services"
+            echo
+            details=$(jq -r --argjson threshold "$threshold" --argjson max "$detail_max" '
+              sort_by(-(.score // -1))
+              | map(select(.score != null and .score >= $threshold))
+              | .[0:$max][]
+              | [.host, .unit, (.score | tostring), .level, .detail]
+              | @tsv
+            ' results.json)
+            if [ -z "$details" ]; then
+              echo "No analyzed service is at or above the detail threshold."
+            else
+              while IFS=$'\t' read -r host unit score level detail; do
+                echo "<details><summary><code>${host}/${unit}</code> — ${score} ${level}</summary>"
+                echo
+                echo '```'
+                cat "$detail"
+                echo '```'
+                echo
+                echo "</details>"
+                echo
+              done <<<"$details"
+            fi
+
+            if [ "$skipped_total" -gt 0 ]; then
+              echo "### Skipped"
+              echo
+              echo "| Host | Unit | Reason |"
+              echo "| --- | --- | --- |"
+              jq -r '.[] | "| \(.host) | `\(.unit // "-")` | \(.reason) |"' skipped.json
+              echo
+            fi
+          } > systemd-security.md
+
+          # Only the generated Markdown is needed by the publish step. Unit
+          # files stay in the read-only Nix store; analyzer output contains no
+          # unit file contents or secrets.
+          rm -rf "$workdir" results.jsonl hosts.jsonl skipped.jsonl results.json hosts.json skipped.json
+
+          echo "services analyzed: $total"
+          echo "issue body: $(wc -c < systemd-security.md) bytes"
+
+      - name: Publish / update the tracking issue
+        shell: nix shell nixpkgs#jq nixpkgs#curl --command bash -euo pipefail {0}
+        env:
+          TOKEN: ${{ secrets.CI_BOT_TOKEN }}
+        run: |
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::error::CI_BOT_TOKEN is not configured"
+            exit 1
+          fi
+
+          api="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: token $TOKEN" -H "Content-Type: application/json")
+
+          listing=$(curl -fsS "${auth[@]}" "$api/issues?state=open&limit=50")
+          num=$(jq -r '
+            [ .[]
+              | select((.pull_request // null) == null)
+              | select(.body != null and (.body | contains("<!-- systemd-security -->")))
+            ] | .[0].number // empty
+          ' <<<"$listing")
+
+          payload=$(jq -n --rawfile body systemd-security.md \
+            '{title: "systemd security overview", body: $body}')
+          if [ -z "$num" ]; then
+            num=$(curl -fsS -X POST "${auth[@]}" "$api/issues" -d "$payload" | jq -r '.number')
+            echo "Created tracking issue #$num"
+          else
+            curl -fsS -X PATCH "${auth[@]}" "$api/issues/$num" -d "$payload" >/dev/null
+            echo "Updated tracking issue #$num"
+          fi
