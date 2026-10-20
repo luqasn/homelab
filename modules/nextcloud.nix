@@ -236,7 +236,7 @@ in
     virtualisation.oci-containers.containers."collabora" = {
       autoStart = true;
       # renovate: datasource=docker depName=collabora/code versioning=docker
-      image = "docker.io/collabora/code:26.04.1.4.1";
+      image = "docker.io/collabora/code:26.04.5.1.1";
       ports = [ "9980:9980/tcp" ];
       environment = {
         server_name = collaboraDomain;
