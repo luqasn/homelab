@@ -203,6 +203,12 @@
               # almost nothing but small files. It costs ~6% of the volume for
               # the inode table. At the default 10 GiB that is ~2.6M inodes,
               # against the 262k the old tmpfs allowed.
+              #
+              # Changing `store_gb` does NOT resize this file in place: the
+              # template's update provisioner deletes it (while the VM is
+              # stopped) and the next start recreates it at the new size. That
+              # discards built store paths, which is safe — sources live in the
+              # virtiofs home/shared directories, not here.
               {
                 image         = "/var/lib/microvms/${vm_name}/nix-store.img";
                 mountPoint    = "/nix/.rw-store";

@@ -100,10 +100,17 @@ data "coder_parameter" "disk_gb" {
 data "coder_parameter" "store_gb" {
   name         = "store_gb"
   display_name = "Nix build store (GiB)"
-  description  = "Size of the writable /nix/store overlay, where anything you build or `nix develop` inside the workspace is written. Backed by a disk image, so it neither consumes the VM's RAM nor is lost on reboot."
+  description  = "Size of the writable /nix/store overlay, where anything you build or `nix develop` inside the workspace is written. Backed by a disk image, so it neither consumes the VM's RAM nor is lost on reboot. Changing this recreates the overlay (the VM restarts and previously built store paths are discarded — source files in your home directory and /mnt/shared are unaffected)."
   default      = "10"
   type         = "number"
-  mutable      = false
+  # Mutable so the size can be changed after creation. The volume cannot be
+  # resized in place by microvm.nix (autoCreate only creates it when missing),
+  # so the update provisioner below deletes nix-store.img when the requested
+  # size differs and the next start recreates it at the new size. Rebuilding
+  # the store is cheap; the home directory and shared directory are host
+  # directories and are never touched. Changeable in both directions because
+  # recreation is deliberate (monotonic would only allow growing).
+  mutable      = true
 
   validation {
     min = 2
@@ -666,6 +673,10 @@ resource "null_resource" "microvm" {
     hypervisor   = data.coder_parameter.hypervisor.value
     memory_mb    = data.coder_parameter.memory_mb.value
     vcpus        = data.coder_parameter.vcpus.value
+    # The store size is already folded into flake_hash (it is a template
+    # argument), but keep it explicit: provisioner step 2 watches this value
+    # to decide whether nix-store.img must be recreated.
+    store_gb     = data.coder_parameter.store_gb.value
     extra_pkgs   = local.extra_pkgs_list
     # Store hashes, not raw secrets. `coder_agent.main.token` is sensitive, and
     # a sensitive value anywhere in this map marks the whole map — and therefore
@@ -842,6 +853,21 @@ resource "null_resource" "microvm" {
       # 3. Stop any existing instance then (re)start
       "systemctl stop 'microvm@${local.vm_name_s}' 2>/dev/null || true",
       "sleep 2",
+
+      # 3a. The writable store image is created once at its `size` and never
+      #     resized by microvm.nix (lib/volumes.nix only truncates+mkfs when
+      #     the image is missing). So if the requested `store_gb` no longer
+      #     matches the image on disk, delete it while the VM is stopped; the
+      #     start below recreates it at the new size. Size is in MiB in the
+      #     flake (`store_gb * 1024`), and truncate -s uses 1 MiB = 1048576
+      #     bytes, so compare the raw byte length against store_gb * 1 MiB.
+      #     Nothing outside /nix/.rw-store lives here: the home directory and
+      #     /mnt/shared are virtiofs host directories, so recreating this
+      #     image only throws away rebuildable build outputs.
+      "store_img=/var/lib/microvms/${local.vm_name_s}/nix-store.img",
+      "want_bytes=${tonumber(data.coder_parameter.store_gb.value) * 1024 * 1024}",
+      "if [ -e \"$store_img\" ] && [ \"$(stat -c %s \"$store_img\")\" != \"$want_bytes\" ]; then echo \"==> Recreating $store_img at $want_bytes bytes (store_gb changed)\"; rm -f \"$store_img\"; fi",
+
       "systemctl start 'microvm@${local.vm_name_s}'",
       "echo '==> VM started. Agent will connect shortly.'",
     ]
