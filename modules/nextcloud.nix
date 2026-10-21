@@ -126,8 +126,11 @@ in
         dbuser = "oc_nextcloud";
         dbname = "oc_nextcloud";
         dbhost = "/run/postgresql";
-        adminuser = "admin";
-        adminpassFile = config.clan.core.vars.generators.nextcloud.files.admin_password.path;
+        # nixpkgs no longer creates an admin user during installation (the
+        # adminuser/adminpassFile options were removed). Existing installs keep
+        # their admin; on a fresh install create it afterwards with
+        # `nextcloud-occ user:add admin` and `nextcloud-occ group:adduser admin admin`.
+        # The nextcloud/admin_password var is kept for that manual step.
       };
       extraApps = {
         inherit (config.services.nextcloud.package.packages.apps)

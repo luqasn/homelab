@@ -92,6 +92,31 @@
       ...
     }@inputs:
     let
+      # clan-core's clan-cli passes combined wrapper flags
+      # (e.g. "--unset LD_LIBRARY_PATH") as single `makeWrapperArgs` entries.
+      # nixpkgs used to turn that array into a space-separated shell string and
+      # split it again, but with structured attrs each element is now forwarded
+      # verbatim, so the Python wrapper hook dies with "makeWrapper doesn't
+      # understand the arg --unset LD_LIBRARY_PATH". Split those flags until
+      # clan-core ships the fixed argument list.
+      clanCli =
+        system:
+        let
+          package = clan-core.packages.${system}.clan-cli;
+        in
+        package.overrideAttrs (old: {
+          makeWrapperArgs = nixpkgs.lib.concatMap (
+            arg:
+            if nixpkgs.lib.hasPrefix "--unset " arg then
+              [
+                "--unset"
+                (nixpkgs.lib.removePrefix "--unset " arg)
+              ]
+            else
+              [ arg ]
+          ) (old.makeWrapperArgs or [ ]);
+        });
+
       # Usage see: https://docs.clan.lol
       clan = clan-core.lib.clan {
         inherit self;
@@ -129,7 +154,7 @@
           ]
           (system: {
             default = clan-core.inputs.nixpkgs.legacyPackages.${system}.mkShell {
-              packages = [ clan-core.packages.${system}.clan-cli ];
+              packages = [ (clanCli system) ];
             };
           });
     };
