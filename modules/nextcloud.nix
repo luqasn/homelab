@@ -8,6 +8,17 @@ let
   collaboraDomain = "docs.${config.common.domain}";
   nextcloudDomain = "nextcloud.${config.common.domain}";
   occ = "${config.services.nextcloud.occ}/bin/nextcloud-occ";
+
+  # Nextcloud talks to Collabora over loopback; the browser uses the public
+  # HTTPS URL. See https://diogotc.com/blog/collabora-nextcloud-nixos/.
+  collaboraWopiUrl = "http://[::1]:${toString config.services.collabora-online.port}";
+  collaboraPublicWopiUrl = "https://${collaboraDomain}";
+  # Collabora connects to Nextcloud from loopback (see the networking.hosts
+  # workaround below), so only accept WOPI requests from there.
+  wopiAllowlist = lib.concatStringsSep "," [
+    "127.0.0.1"
+    "::1"
+  ];
 in
 {
   options = {
@@ -205,6 +216,33 @@ in
       after = [ "postgresql.service" ];
     };
 
+    # richdocuments (Nextcloud Office) keeps its Collabora settings in the
+    # database, so they have to be applied with `occ` after Nextcloud and
+    # Collabora are both up. Running as `nextcloud` plus LoadCredential avoids
+    # the occ wrapper's systemd-run fallback (it needs a credentials directory
+    # to exec PHP directly); the same pattern is used for the preview generator
+    # below.
+    systemd.services.nextcloud-config-collabora = {
+      wantedBy = [ "multi-user.target" ];
+      after = [
+        "nextcloud-setup.service"
+        "coolwsd.service"
+      ];
+      requires = [ "coolwsd.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        User = "nextcloud";
+        LoadCredential =
+          "secret_file:${config.sops.secrets.nextcloud-secrets-json.path}";
+      };
+      script = ''
+        ${occ} config:app:set richdocuments wopi_url --value ${lib.escapeShellArg collaboraWopiUrl}
+        ${occ} config:app:set richdocuments public_wopi_url --value ${lib.escapeShellArg collaboraPublicWopiUrl}
+        ${occ} config:app:set richdocuments wopi_allowlist --value ${lib.escapeShellArg wopiAllowlist}
+        ${occ} richdocuments:setup
+      '';
+    };
+
     # Configured as defined in https://github.com/nextcloud/previewgenerator
     systemd.timers.nextcloud-cron-previewgenerator = {
       wantedBy = [ "timers.target" ];
@@ -232,22 +270,71 @@ in
         "secret_file:${config.sops.secrets.nextcloud-secrets-json.path}";
     };
 
-    virtualisation.podman.enable = true;
-    virtualisation.oci-containers.containers."collabora" = {
-      autoStart = true;
-      # renovate: datasource=docker depName=collabora/code versioning=docker
-      image = "docker.io/collabora/code:26.04.5.1.1";
-      ports = [ "9980:9980/tcp" ];
-      environment = {
+    services.collabora-online = {
+      enable = true;
+
+      settings = {
+        # TLS is terminated by the nginx reverse proxy in front of Collabora.
+        ssl = {
+          enable = false;
+          termination = true;
+        };
+
+        # Only the reverse proxy and Nextcloud (both local) talk to coolwsd.
+        net = {
+          listen = "loopback";
+          post_allow.host = [ "::1" ];
+        };
+
+        # Only allow WOPI requests for our Nextcloud instance. Use
+        # alias_groups rather than storage.wopi.host: the stock coolwsd.xml
+        # always contains an alias_groups stanza, and Collabora ignores
+        # storage.wopi.host when that stanza is present.
+        storage.wopi = {
+          "@allow" = true;
+          alias_groups = {
+            "@mode" = "groups";
+            group = {
+              host = {
+                "@allow" = true;
+                "+content" = "https://${nextcloudDomain}";
+              };
+            };
+          };
+        };
+
+        # Public FQDN Collabora uses when generating URLs for the browser.
         server_name = collaboraDomain;
-        dictionaries = "en_US";
-        extra_params = "--o:ssl.enable=false --o:ssl.termination=true";
-        # extra_params = "--o:ssl.enable=false";
+
+        # Not needed for the Nextcloud integration.
+        admin_console.enable = false;
+
+        # Hash document names/usernames in logs instead of writing them in
+        # clear text. 6970438717373642851 is a random 63-bit salt.
+        logging.anonymize = {
+          anonymize_user_data = true;
+          anonymization_salt = 6970438717373642851;
+        };
+
+        # These are the defaults; pin them so a package change cannot silently
+        # enable document macros or the WebSocket URP endpoint.
+        security = {
+          enable_macros_execution = false;
+          enable_websocket_urp = false;
+        };
       };
-      extraOptions = [
-        "--cap-add"
-        "MKNOD"
-      ];
+    };
+
+    # The NixOS module mirrors upstream's service except for sandboxing, which
+    # upstream's coolwsd.service sets itself. Keep the same protections here;
+    # coolwsd only needs to write its state directory.
+    systemd.services.coolwsd.serviceConfig = {
+      ProtectSystem = "strict";
+      ReadWritePaths = [ "/var/lib/cool" ];
+      ProtectHome = true;
+      PrivateTmp = true;
+      ProtectControlGroups = true;
+      NoNewPrivileges = true;
     };
 
     services.nginx.virtualHosts.${config.services.nextcloud.hostName} = {
@@ -265,35 +352,32 @@ in
     services.nginx.virtualHosts.${collaboraDomain} = {
       forceSSL = true;
       useACMEHost = config.common.domain;
-      extraConfig = ''
-         # static files
-         location ^~ /browser {
-           proxy_pass http://127.0.0.1:9980;
-           proxy_set_header Host $host;
-         }
-
-         # WOPI discovery URL
-         location ^~ /hosting/discovery {
-           proxy_pass http://127.0.0.1:9980;
-           proxy_set_header Host $host;
-         }
-
-         # Capabilities
-         location ^~ /hosting/capabilities {
-           proxy_pass http://127.0.0.1:9980;
-           proxy_set_header Host $host;
-        }
-
-        # main websocket, download, presentation (legacy svg) and image upload
-        location ^~ /cool/ {
-          proxy_pass http://127.0.0.1:9980;
-          proxy_http_version 1.1;
-          proxy_set_header Upgrade $http_upgrade;
-          proxy_set_header Connection "Upgrade";
-          proxy_set_header Host $host;
+      # One location is enough: Collabora serves /browser, /hosting/* and
+      # /cool/* from the same backend. recommendedProxySettings (modules/
+      # homelab.nix) sets the Host and X-Forwarded-* headers.
+      locations."/" = {
+        proxyPass = "http://[::1]:${toString config.services.collabora-online.port}";
+        proxyWebsockets = true; # collabora uses websockets
+        extraConfig = ''
           proxy_read_timeout 36000s;
-        }
-      '';
+          proxy_send_timeout 36000s;
+        '';
+      };
+    };
+
+    # Collabora has to fetch documents from Nextcloud. This host is behind NAT
+    # with a dynamic public IP, so resolve Nextcloud (and Collabora) to
+    # loopback locally. That keeps WOPI traffic on the machine and lets
+    # wopi_allowlist stay loopback-only; see the linked blog post.
+    networking.hosts = {
+      "127.0.0.1" = [
+        nextcloudDomain
+        collaboraDomain
+      ];
+      "::1" = [
+        nextcloudDomain
+        collaboraDomain
+      ];
     };
   };
 }
