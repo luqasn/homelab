@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   self,
   ...
 }:
@@ -8,6 +9,31 @@ let
   utils = import ../lib {
     inherit config;
     inherit lib;
+  };
+
+  # urllib3-future's and niquests' test suites need a working SOCKS proxy /
+  # external network, so they fail in the build sandbox. Keep the upstream
+  # odysseus overlay and add a local Python package extension that disables
+  # those checks on Linux too (upstream only disables them on Darwin).
+  odysseusPkgs = (pkgs.extend (import "${self.inputs.odysseus}/nix/overlay.nix")).extend (
+    _final: prev: {
+      pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
+        (_pyFinal: pyPrev: {
+          urllib3-future = pyPrev.urllib3-future.overridePythonAttrs (_: {
+            doCheck = false;
+          });
+          # niquests' proxy tests also need external network access.
+          niquests = pyPrev.niquests.overridePythonAttrs (_: {
+            doCheck = false;
+          });
+        })
+      ];
+    }
+  );
+
+  odysseusPackage = odysseusPkgs.callPackage "${self.inputs.odysseus}/nix/odysseus.nix" {
+    src = self.inputs.odysseus;
+    extraPythonPackages = _ps: [ ];
   };
 in
 {
@@ -19,6 +45,7 @@ in
 
   services.odysseus = {
     enable = true;
+    package = odysseusPackage;
 
     # Bind loopback; nginx (below) fronts it. Don't open the firewall.
     host = "127.0.0.1";

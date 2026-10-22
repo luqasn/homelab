@@ -19,13 +19,31 @@ let
   # regenerated once per boot).
   runnerTokenDir = "forgejo-runner-token";
   runnerTokenFile = "/run/${runnerTokenDir}/token";
-  # nixpkgs' gitea-actions-runner instance module names its systemd unit
-  # "gitea-runner-${escapeSystemdPath <instance-name>}", i.e. the instance
-  # "forgejo-local" becomes the unit "gitea-runner-forgejo\x2dlocal.service".
-  # Derive the name the same way here, so the override below hits the
-  # generated unit instead of creating a second, empty one (which systemd
-  # refuses to start: "Service has no ExecStart=").
-  runnerUnitName = "gitea-runner-${utils.escapeSystemdPath runnerInstanceName}";
+  # Keep the state directory used by the old gitea-actions-runner module, so
+  # the existing `.runner` registration (uuid + runner token) survives the
+  # migration and we do not have to register a duplicate runner.
+  runnerStateDir = "/var/lib/gitea-runner/${runnerInstanceName}";
+  runnerUnitName = "forgejo-runner-${utils.escapeSystemdPath runnerInstanceName}";
+  runnerLabels = [ "native:host" ];
+  runnerHostPackages = with pkgs; [
+    bash
+    # The nix CLI, so workflows (and composite actions that shell out to
+    # `nix run`) can use it; the runner's default PATH has no nix.
+    config.nix.package
+    coreutils
+    curl
+    gawk
+    git-filter-repo
+    gitMinimal
+    gnused
+    nodejs
+    wget
+  ];
+  # The labels from the config override the ones recorded in `.runner`, so
+  # changes to runnerLabels do not require a new registration.
+  runnerConfig = (pkgs.formats.yaml { }).generate "forgejo-runner-config.yaml" {
+    runner.labels = runnerLabels;
+  };
   # Forgejo repository (owner/name) whose Actions job queue the idle-gated
   # restart below observes. Matches the git origin of this repo.
   forgejoRepo = "luqasn/homelab";
@@ -81,40 +99,6 @@ in
     };
   };
 
-  # --- Forgejo self-hosted runner ---
-  services.gitea-actions-runner = {
-    package = pkgs.forgejo-runner;
-    instances.${runnerInstanceName} = {
-      enable = true;
-      name = "forgejo-local";
-      # forgejo-runner speaks plain HTTP(S) only: its HTTP client has no
-      # unix-socket support, so "http://unix:/run/forgejo/forgejo.sock" is
-      # parsed as the DNS host "unix" and registration fails
-      # ("Cannot ping the Forgejo instance server: lookup unix: no such
-      # host"). Point it at the local nginx vhost that fronts the unix
-      # socket instead.
-      url = "https://${forgejoDomain}";
-      tokenFile = runnerTokenFile;
-      labels = [
-        "native:host"
-      ];
-      hostPackages = with pkgs; [
-        bash
-        # The nix CLI, so workflows (and composite actions that shell out to
-        # `nix run`) can use it; the runner's default PATH has no nix.
-        config.nix.package
-        coreutils
-        curl
-        gawk
-        git-filter-repo
-        gitMinimal
-        gnused
-        nodejs
-        wget
-      ];
-    };
-  };
-
   # --- Runner token generation ---
   # Wait for Forgejo to be up, then generate a runner token.
   systemd.services.forgejo-runner-token = {
@@ -163,8 +147,17 @@ in
     '';
   };
 
-  # Ensure the runner waits for token generation, and for nginx (the runner
-  # reaches forgejo through the https vhost nginx terminates).
+  # --- Forgejo self-hosted runner ---
+  # nixpkgs' gitea-actions-runner module no longer accepts `forgejo-runner`,
+  # and its replacement (`services.forgejo-runner`) wants a pre-registered
+  # uuid + runner token instead of the registration token generated at boot.
+  # Keep the registration-token flow with a small local service: forgejo-runner
+  # still implements it, and reusing the old state directory preserves the
+  # existing registration.
+  #
+  # The runner reaches Forgejo through the local nginx vhost because its HTTP
+  # client has no unix-socket support ("http://unix:/run/forgejo/forgejo.sock"
+  # would be parsed as the DNS host "unix").
   #
   # `restartIfChanged = false` is essential for self-deploys: the runner is what
   # executes this repo's Forgejo Actions jobs, including the deploy workflow that
@@ -175,6 +168,8 @@ in
   # restarted, which deploy-machines.yml schedules as a detached transient unit
   # after the deploy completes.
   systemd.services.${runnerUnitName} = {
+    description = "Forgejo Actions runner (${runnerInstanceName})";
+    wantedBy = [ "multi-user.target" ];
     after = [
       "forgejo-runner-token.service"
       "nginx.service"
@@ -184,6 +179,51 @@ in
       "nginx.service"
     ];
     restartIfChanged = false;
+    environment = {
+      HOME = runnerStateDir;
+      INSTANCE_DIR = runnerStateDir;
+    };
+    path = [ pkgs.coreutils ] ++ runnerHostPackages;
+    serviceConfig = {
+      DynamicUser = true;
+      User = "gitea-runner";
+      StateDirectory = [
+        "gitea-runner"
+        "gitea-runner/${runnerInstanceName}"
+      ];
+      WorkingDirectory = runnerStateDir;
+      # DynamicUser can mount the executable directory noexec; host jobs need
+      # to execute scripts from the runner state directory.
+      ExecPaths = [ runnerStateDir ];
+      Restart = "on-failure";
+      RestartSec = 10;
+      LoadCredential = [ "token:${runnerTokenFile}" ];
+      ExecStartPre = pkgs.writeShellScript "forgejo-runner-register-${runnerInstanceName}" ''
+        set -euo pipefail
+
+        # Accept both the old systemd-style `TOKEN=...` file and a raw token.
+        if grep -q -m1 -E '^[[:space:]]*TOKEN=' "$CREDENTIALS_DIRECTORY/token"; then
+          token="$(sed -n -E 's/^[[:space:]]*TOKEN=//p' "$CREDENTIALS_DIRECTORY/token" | tail -n1)"
+        else
+          token="$(cat "$CREDENTIALS_DIRECTORY/token")"
+        fi
+
+        # Only register when there is no registration yet. The registration
+        # token is regenerated at every boot, but the runner token inside
+        # `.runner` stays valid, so re-registering on every boot would only
+        # create duplicate runner entries (labels are refreshed from the
+        # config on every daemon start anyway).
+        if [ ! -e "$INSTANCE_DIR/.runner" ]; then
+          ${lib.getExe pkgs.forgejo-runner} register --no-interactive \
+            --instance ${lib.escapeShellArg "https://${forgejoDomain}"} \
+            --token "$token" \
+            --name ${lib.escapeShellArg runnerInstanceName} \
+            --labels ${lib.escapeShellArg (lib.concatStringsSep "," runnerLabels)} \
+            --config ${runnerConfig}
+        fi
+      '';
+      ExecStart = "${lib.getExe pkgs.forgejo-runner} daemon --config ${runnerConfig}";
+    };
   };
 
   # --- Idle-gated runner restart ---
