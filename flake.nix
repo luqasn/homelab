@@ -12,6 +12,12 @@
   # follows this one, so only a single nixpkgs lands in `flake.lock`.
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
+  # nixos-unstable-small carries PHP security fixes earlier than
+  # nixos-unstable, but not all packages are built on Hydra there. Keep it as a
+  # second input and take only the prebuilt PHP packages from it; everything
+  # else stays on the cached nixos-unstable package set.
+  inputs.nixpkgs-small.url = "github:NixOS/nixpkgs/nixos-unstable-small";
+
   # Semi-secret data (PII such as the public domains and the upstream mail
   # host) lives in-tree in homelab-private.nix and is scrubbed by the GitHub
   # mirror workflow. See that file's header for details.

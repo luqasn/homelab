@@ -7,6 +7,19 @@
   ...
 }:
 {
+  # nixos-unstable ships PHP 8.5.11 and 8.4.26, which are affected by
+  # CVE-2026-109618 and CVE-2026-109619. nixos-unstable-small already has
+  # 8.5.12 and 8.4.27 built on Hydra, so take those packages directly instead
+  # of rebuilding the source against nixos-unstable's dependencies (which also
+  # made the php-filter tests fail). The rest of the system stays on
+  # nixos-unstable, where heavy packages remain available from the binary cache.
+  nixpkgs.overlays = [
+    (final: prev: {
+      php84 = self.inputs.nixpkgs-small.legacyPackages.${prev.stdenv.hostPlatform.system}.php84;
+      php85 = self.inputs.nixpkgs-small.legacyPackages.${prev.stdenv.hostPlatform.system}.php85;
+    })
+  ];
+
   imports = [
     # Per-system OpenVEX feed for the vulnerability scan
     # (.forgejo/workflows/vuln-scan.yml): adds `system.build.vexFeed`, which
