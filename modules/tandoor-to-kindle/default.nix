@@ -11,6 +11,14 @@ let
     paramiko
   ]);
 
+  # This service only uses calibre's `ebook-convert`; its speech-dispatcher /
+  # piper-tts integration is unused. Disabling it also avoids building
+  # pyopenjtalk-plus, whose test suite fails against Python 3.14's changed
+  # TypeError wording.
+  calibre = pkgs.calibre.override {
+    speechSupport = false;
+  };
+
   todoServer = pkgs.stdenv.mkDerivation {
     name = "tandoor-to-kindle";
     src = ./.;
@@ -40,7 +48,7 @@ in {
 
     serviceConfig = {
       ExecStart       = "${todoServer}/bin/tandoor-to-kindle";
-      Environment = "PATH=${lib.makeBinPath [ pkgs.calibre ]}";
+      Environment = "PATH=${lib.makeBinPath [ calibre ]}";
       Restart         = "on-failure";
       RestartSec      = "5s";
       LoadCredential = [
