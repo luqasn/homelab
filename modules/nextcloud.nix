@@ -69,6 +69,18 @@ in
       PrivateDevices = lib.mkForce false;
     };
 
+    # PHP recommends disabling session upload progress until the next bugfix
+    # release fully fixes CVE-2026-115560: an application that switches
+    # session.serialize_handler to `php` at runtime can reach an unlikely RCE
+    # path. (The same setting was already recommended for CVE-2026-109619 before
+    # the 8.5.12/8.4.27 update in modules/shared.nix, so keep it.) Set it in the
+    # FPM pool as an admin value so the application cannot re-enable it with
+    # ini_set() or .user.ini.
+    # https://www.php.net/archive/2026.php#2026-10-23-1
+    services.phpfpm.pools.nextcloud.settings = {
+      "php_admin_value[session.upload_progress.enabled]" = "0";
+    };
+
     services.nextcloud = {
       enable = true;
       https = true;
