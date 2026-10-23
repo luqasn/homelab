@@ -106,6 +106,12 @@
             defaultModel    = "deepseek-v4.1-flash";
             packages        = [ "$${piWeb}/lib/node_modules/pi-web/dist/pi-packages/relays" ];
           });
+
+          # Optional workspace apps, rendered from the Coder parameters in
+          # main.tf. Disabling one removes its systemd unit(s) below; the
+          # package stays installed so command-line use still works.
+          enablePiWeb      = ${enable_pi_web};
+          enableCodeServer = ${enable_code_server};
         in
         {
 
@@ -420,7 +426,7 @@
           # HOME/WorkingDirectory point at /home/<user> (the virtiofs share
           # mounted from the host's /var/lib/coder-workspaces/<vm>), so VS
           # Code's config, extensions and open files persist across VM reboots.
-          systemd.services.code-server = {
+          systemd.services.code-server = lib.mkIf enableCodeServer {
             description = "code-server (VS Code in the browser)";
             wantedBy    = [ "multi-user.target" ];
             # `coderGitEnv` so integrated terminals and VS Code's own Git
@@ -451,7 +457,7 @@
           # PI_WEB_ALLOWED_HOSTS=true lets the app accept the Coder subdomain
           # Host header; the app is still behind Coder's owner-scoped proxy, so
           # it stays private to the workspace owner.
-          systemd.services.pi-web-sessiond = {
+          systemd.services.pi-web-sessiond = lib.mkIf enablePiWeb {
             description = "PI WEB session daemon";
             wantedBy    = [ "multi-user.target" ];
             after       = [ "network-online.target" ];
@@ -474,7 +480,7 @@
             };
           };
 
-          systemd.services.pi-web = {
+          systemd.services.pi-web = lib.mkIf enablePiWeb {
             description = "PI WEB server";
             wantedBy    = [ "multi-user.target" ];
             after       = [ "pi-web-sessiond.service" "network-online.target" ];
