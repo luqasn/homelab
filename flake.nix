@@ -123,6 +123,80 @@
           ) (old.makeWrapperArgs or [ ]);
         });
 
+      # Toolchain for .forgejo/workflows/vuln-scan.yml. Keeping it in the flake
+      # pins sbomnix/grype/jq to this repo's nixpkgs instead of whatever the
+      # flake registry happens to point at, and lets the workarounds below live
+      # next to the other nixpkgs fixes.
+      #
+      # nixos-unstable currently ships python3Packages.typepy 2.0.0 while
+      # sqliteschema, simplesqlite and pytest-md-report still declare
+      # `typepy<2`, so sbomnix (which reaches them through df-diskcache) fails
+      # its runtime dependency check. Relax the constraint; the fixes are
+      # merged to nixpkgs staging but have not reached nixos-unstable yet:
+      # https://github.com/NixOS/nixpkgs/pull/573108
+      #
+      # `reuse` (another sbomnix dependency) is hit by the structured-attrs
+      # migration: list attributes such as `sphinxBuilders` are no longer
+      # exported to the build scripts, so only the html docs are built and the
+      # `man` output is left missing. Passing a space-separated string restores
+      # what the sphinx hook expects (it evals the value into an array). Tracked
+      # upstream as https://github.com/NixOS/nixpkgs/issues/576624.
+      #
+      # sbomnix has the same `makeWrapperArgs` problem as clan-cli above: its
+      # single "--prefix PATH : ..." entry reaches makeWrapper as one argument.
+      # Split it back up.
+      vulnScanTools =
+        system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [
+              (_final: prev: {
+                python3 = prev.python3.override {
+                  packageOverrides = _pyFinal: pyPrev: {
+                    sqliteschema = pyPrev.sqliteschema.overridePythonAttrs (old: {
+                      pythonRelaxDeps = (old.pythonRelaxDeps or [ ]) ++ [ "typepy" ];
+                    });
+                    simplesqlite = pyPrev.simplesqlite.overridePythonAttrs (old: {
+                      pythonRelaxDeps = (old.pythonRelaxDeps or [ ]) ++ [ "typepy" ];
+                    });
+                    pytest-md-report = pyPrev.pytest-md-report.overridePythonAttrs (old: {
+                      pythonRelaxDeps = (old.pythonRelaxDeps or [ ]) ++ [ "typepy" ];
+                    });
+                    reuse = pyPrev.reuse.overridePythonAttrs (old: {
+                      sphinxBuilders = "html man";
+                    });
+                  };
+                };
+              })
+              (_final: prev: {
+                sbomnix = prev.sbomnix.overrideAttrs (old: {
+                  makeWrapperArgs = nixpkgs.lib.concatMap (
+                    arg:
+                    if nixpkgs.lib.hasPrefix "--prefix PATH : " arg then
+                      [
+                        "--prefix"
+                        "PATH"
+                        ":"
+                        (nixpkgs.lib.removePrefix "--prefix PATH : " arg)
+                      ]
+                    else
+                      [ arg ]
+                  ) (old.makeWrapperArgs or [ ]);
+                });
+              })
+            ];
+          };
+        in
+        pkgs.symlinkJoin {
+          name = "vuln-scan-tools";
+          paths = [
+            pkgs.sbomnix
+            pkgs.grype
+            pkgs.jq
+          ];
+        };
+
       # Usage see: https://docs.clan.lol
       clan = clan-core.lib.clan {
         inherit self;
@@ -148,6 +222,12 @@
     {
       inherit (clan.config) nixosConfigurations nixosModules clanInternals;
       clan = clan.config;
+      # Vulnerability-scan toolchain; see the comment on vulnScanTools above.
+      # Only the native x86_64 runner in .forgejo/workflows/vuln-scan.yml uses
+      # it.
+      packages = nixpkgs.lib.genAttrs [ "x86_64-linux" ] (system: {
+        vuln-scan-tools = vulnScanTools system;
+      });
       # Add the Clan cli tool to the dev shell.
       # Use "nix develop" to enter the dev shell.
       devShells =

@@ -33,8 +33,10 @@
 #
 # The runner service PATH only contains coreutils/findutils/gnugrep/gnused/
 # systemd plus the configured `hostPackages` (see modules/forgejo.nix): `nix` is
-# present (hostPackages) but `jq`/`sbomnix`/`grype` are not, so they are pulled
-# from nixpkgs through `nix shell` (same trick as nvd-diff.yml).
+# present (hostPackages) but `jq`/`sbomnix`/`grype` are not. They come from the
+# flake's `vuln-scan-tools` package (`nix shell .#vuln-scan-tools`), which pins
+# them to this repo's nixpkgs rather than the flake registry and carries the
+# temporary nixpkgs workarounds documented in flake.nix.
 #
 # grype downloads a ~1 GB vulnerability database on first use, and it has to
 # land on a writable filesystem: the runner is an unprivileged systemd
@@ -85,7 +87,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Scan every machine
-        shell: nix shell nixpkgs#sbomnix nixpkgs#grype nixpkgs#jq --command bash -euo pipefail {0}
+        shell: nix shell .#vuln-scan-tools --command bash -euo pipefail {0}
         run: |
           hosts="$HOSTS"
           if [ -z "$hosts" ]; then
