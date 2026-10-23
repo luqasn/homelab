@@ -126,6 +126,37 @@ data "coder_parameter" "extra_packages" {
   mutable      = true
 }
 
+# Optional workspace apps. All default to enabled so existing workspaces keep
+# their current behaviour. Disabling one removes its Coder app and stops its
+# systemd unit(s) on the next workspace update; the underlying package stays in
+# the system closure so command-line use (e.g. `pi`) still works.
+data "coder_parameter" "enable_pi_web" {
+  name         = "enable_pi_web"
+  display_name = "Pi Web"
+  description  = "Run the Pi Web app and its session daemon. Disable to save memory if you only use OpenCode."
+  type         = "bool"
+  default      = "true"
+  mutable      = true
+}
+
+data "coder_parameter" "enable_code_server" {
+  name         = "enable_code_server"
+  display_name = "VS Code (web)"
+  description  = "Run VS Code (web) inside the workspace. Disable to save memory if you edit through OpenCode or SSH."
+  type         = "bool"
+  default      = "true"
+  mutable      = true
+}
+
+data "coder_parameter" "enable_filebrowser" {
+  name         = "enable_filebrowser"
+  display_name = "File Browser"
+  description  = "Run the File Browser app for your home directory. Disable to remove the app and its workspace-start script."
+  type         = "bool"
+  default      = "true"
+  mutable      = true
+}
+
 data "coder_parameter" "microvm_host" {
   name         = "microvm_host"
   display_name = "Microvm host"
@@ -270,6 +301,13 @@ locals {
     for p in split(" ", trimspace(data.coder_parameter.extra_packages.value)) : p
     if p != ""
   ])
+
+  # Optional workspace apps. Coder bool parameters surface as the strings
+  # "true"/"false", so normalize them once for the resource counts and the
+  # generated NixOS module.
+  enable_pi_web      = data.coder_parameter.enable_pi_web.value == "true"
+  enable_code_server = data.coder_parameter.enable_code_server.value == "true"
+  enable_filebrowser = data.coder_parameter.enable_filebrowser.value == "true"
 }
 
 # ---------------------------------------------------------------------------
@@ -400,6 +438,7 @@ resource "coder_app" "ssh" {
 # subpath proxy quirks some web apps have) but requires wildcard DNS + the
 # server's wildcard-access URL to be configured first (see caveats).
 resource "coder_app" "code-server" {
+  count        = local.enable_code_server ? 1 : 0
   agent_id     = coder_agent.main.id
   slug         = "code-server"
   display_name = "VS Code (web)"
@@ -427,6 +466,7 @@ resource "coder_app" "code-server" {
 # server-side (CODER_DISABLE_PATH_APPS), and the wildcard DNS/cert are already
 # configured for the other workspace apps.
 resource "coder_app" "pi-web" {
+  count        = local.enable_pi_web ? 1 : 0
   agent_id     = coder_agent.main.id
   slug         = "pi-web"
   display_name = "Pi Web"
@@ -513,6 +553,7 @@ resource "coder_app" "opencode" {
 # (/home/<owner>), the virtiofs share mounted from the host's
 # /var/lib/coder-workspaces/<vm> — so it persists across VM reboots.
 module "filebrowser" {
+  count    = local.enable_filebrowser ? 1 : 0
   source   = "registry.coder.com/modules/filebrowser/coder"
   version  = "1.1.5"
   agent_id = coder_agent.main.id
@@ -638,6 +679,11 @@ locals {
     coder_server_ip       = var.coder_server_ip
     coder_server_hostname = var.coder_server_hostname
     authorized_ssh_keys   = var.authorized_ssh_keys
+    # App toggles consumed by the generated NixOS module. File Browser is
+    # handled entirely by the Terraform module above, so it needs no flake
+    # input (toggling it does not force a VM rebuild).
+    enable_pi_web      = local.enable_pi_web
+    enable_code_server = local.enable_code_server
   }))
 }
 
