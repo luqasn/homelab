@@ -18,6 +18,18 @@
       php84 = self.inputs.nixpkgs-small.legacyPackages.${prev.stdenv.hostPlatform.system}.php84;
       php85 = self.inputs.nixpkgs-small.legacyPackages.${prev.stdenv.hostPlatform.system}.php85;
     })
+    # CVE-2026-111497: the Brotli decoder bundled with Node.js 22.23.3 (what
+    # nixos-unstable currently ships) has an out-of-bounds write. 22.23.4 fixes
+    # it, and nixos-unstable-small already carries that build on Hydra, so take
+    # it from there instead of waiting for the current staging cycle to reach
+    # nixos-unstable. This fixes karakeep, which pins nodejs_22. The default
+    # nodejs_24 (24.21.0) is NOT fixed by this and still needs the
+    # nixos-unstable update to 24.22.1; drop this overlay once nixos-unstable
+    # ships 22.23.4.
+    (final: prev: {
+      nodejs_22 = self.inputs.nixpkgs-small.legacyPackages.${prev.stdenv.hostPlatform.system}.nodejs_22;
+      nodejs-slim_22 = self.inputs.nixpkgs-small.legacyPackages.${prev.stdenv.hostPlatform.system}.nodejs-slim_22;
+    })
   ];
 
   imports = [

@@ -9,6 +9,7 @@ let
     inherit lib;
   };
   karakeepHttpPort = 8778;
+  karakeepDomain = "karakeep.${config.common.internalDomain}";
 in
 {
   services.karakeep = {
@@ -26,13 +27,16 @@ in
 
     extraEnvironment = {
       "PORT" = toString karakeepHttpPort;
-      "NEXTAUTH_URL" = "https://karakeep.${config.common.domain}";
+      "NEXTAUTH_URL" = "https://${karakeepDomain}";
       "DISABLE_SIGNUPS" = "true";
     };
   };
 
-  services.nginx.virtualHosts."karakeep.${config.common.domain}" = utils.mkVirtualHost {
+  # Internal-only, like rss/actual: the bookmark library is personal data and
+  # Karakeep's crawler fetches arbitrary user-submitted URLs server-side, so it
+  # must not be reachable from the internet.
+  services.nginx.virtualHosts.${karakeepDomain} = utils.mkVirtualHost {
     port = karakeepHttpPort;
-    internal = false;
+    internal = true;
   };
 }

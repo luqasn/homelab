@@ -213,19 +213,14 @@ in
         ${occ} config:system:set jpeg_quality --value 60
         ${occ} config:app:set preview jpeg_quality --value="60"
 
-        ${occ} config:app:set recognize nice_binary --value ${pkgs.coreutils}/bin/nice
-        ${occ} config:app:set recognize node_binary --value ${pkgs.nodejs}/bin/node
-        ${occ} config:app:set recognize faces.enabled --value true
-        ${occ} config:app:set recognize faces.batchSize --value 50
-        ${occ} config:app:set recognize imagenet.enabled --value true
-        ${occ} config:app:set recognize imagenet.batchSize --value 100
-        ${occ} config:app:set recognize landmarks.batchSize --value 100
-        ${occ} config:app:set recognize landmarks.enabled --value true
-        ${occ} config:app:set recognize tensorflow.cores --value 1
-        ${occ} config:app:set recognize tensorflow.gpu --value false
-        ${occ} config:app:set recognize tensorflow.purejs --value false
-        ${occ} config:app:set recognize musicnn.enabled --value false
-        ${occ} config:app:set recognize musicnn.batchSize --value 100
+        # Drop the recognize app: it runs its image/face recognition through
+        # Node.js, which is the affected runtime in CVE-2026-111497. Removing it
+        # also drops the node_binary setting that pulled pkgs.nodejs into the
+        # Nextcloud service environment. `app:remove` disables before removing,
+        # so do not disable it first: it refuses to remove an already-disabled
+        # app. Best-effort, so a fresh install (where the app was never
+        # installed) does not fail the unit.
+        ${occ} app:remove recognize || true
       '';
       requires = [ "postgresql.service" ];
       after = [ "postgresql.service" ];
