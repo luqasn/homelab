@@ -98,31 +98,6 @@
       ...
     }@inputs:
     let
-      # clan-core's clan-cli passes combined wrapper flags
-      # (e.g. "--unset LD_LIBRARY_PATH") as single `makeWrapperArgs` entries.
-      # nixpkgs used to turn that array into a space-separated shell string and
-      # split it again, but with structured attrs each element is now forwarded
-      # verbatim, so the Python wrapper hook dies with "makeWrapper doesn't
-      # understand the arg --unset LD_LIBRARY_PATH". Split those flags until
-      # clan-core ships the fixed argument list.
-      clanCli =
-        system:
-        let
-          package = clan-core.packages.${system}.clan-cli;
-        in
-        package.overrideAttrs (old: {
-          makeWrapperArgs = nixpkgs.lib.concatMap (
-            arg:
-            if nixpkgs.lib.hasPrefix "--unset " arg then
-              [
-                "--unset"
-                (nixpkgs.lib.removePrefix "--unset " arg)
-              ]
-            else
-              [ arg ]
-          ) (old.makeWrapperArgs or [ ]);
-        });
-
       # Toolchain for .forgejo/workflows/vuln-scan.yml. Keeping it in the flake
       # pins sbomnix/grype/jq to this repo's nixpkgs instead of whatever the
       # flake registry happens to point at, and lets the workarounds below live
@@ -142,8 +117,8 @@
       # what the sphinx hook expects (it evals the value into an array). Tracked
       # upstream as https://github.com/NixOS/nixpkgs/issues/576624.
       #
-      # sbomnix has the same `makeWrapperArgs` problem as clan-cli above: its
-      # single "--prefix PATH : ..." entry reaches makeWrapper as one argument.
+      # sbomnix has the same `makeWrapperArgs` problem: its single
+      # "--prefix PATH : ..." entry reaches makeWrapper as one argument.
       # Split it back up.
       vulnScanTools =
         system:
@@ -240,7 +215,7 @@
           ]
           (system: {
             default = clan-core.inputs.nixpkgs.legacyPackages.${system}.mkShell {
-              packages = [ (clanCli system) ];
+              packages = [ clan-core.packages.${system}.clan-cli ];
             };
           });
     };
