@@ -10,11 +10,18 @@
 #     system closure; no secrets are needed. Clan only injects the machine's
 #     decryption key into image formats (iso, sd-card, ...), which this
 #     workflow does not build.
+#   * Before building, `clan vars check` verifies that every generated var is
+#     present and up to date. The deploy workflow generates missing vars on its
+#     runner, but it cannot push the resulting encrypted files back, so a PR
+#     that adds or changes a vars generator must run `clan vars generate` and
+#     commit the files under vars/ first. Without this gate the generated
+#     secrets would silently be lost on the next deploy.
 #   * The runner service PATH only contains coreutils/findutils/gnugrep/gnused/
 #     systemd plus the configured `hostPackages` (see modules/forgejo.nix), so
 #     `nix` is not on PATH and the host system profile is added explicitly.
 #
-# No secrets are required: the flake has no private inputs.
+# No secrets are required: the flake has no private inputs, and `clan vars
+# check` only inspects the (encrypted) vars store.
 
 name: Build all machines
 
@@ -39,6 +46,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Check clan vars are committed
+        # The deploy workflow generates missing vars on its runner but cannot
+        # push them back, so generated secrets would be lost. Fail the PR here
+        # instead, forcing the branch to carry the generated files.
+        run: |
+          set -euo pipefail
+          export PATH="/run/current-system/sw/bin:$PATH"
+          if ! nix develop --command clan vars check; then
+            echo "::error::Clan vars are missing or outdated. Run 'nix develop --command clan vars generate' in this branch, commit the resulting files under vars/, and push again."
+            exit 1
+          fi
 
       - name: Build all machines
         run: |
