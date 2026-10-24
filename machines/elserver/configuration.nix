@@ -33,6 +33,7 @@ in
     ../../modules/starr
     ../../modules/mailserver.nix
     ../../modules/immich.nix
+    ../../modules/dawarich.nix
     ../../modules/rss.nix
     ../../modules/tandoor.nix
     ../../modules/home-assistant
@@ -312,6 +313,22 @@ in
     device = "ssd/data/karakeep";
     fsType = "zfs";
   };
+
+  # Dawarich's uploaded location history and generated secret key base live in
+  # /var/lib/dawarich. Gate every Dawarich unit on the mount so a failed
+  # dataset import cannot write into /var/lib on the root dataset.
+  #
+  # Create the dataset once before the first deploy (the `offsite` property
+  # opts it into the nightly zfs-autobackup run):
+  #   zfs create ssd/data/dawarich
+  #   zfs set autobackup:offsite=true ssd/data/dawarich
+  fileSystems."/var/lib/dawarich" = {
+    device = "ssd/data/dawarich";
+    fsType = "zfs";
+  };
+  systemd.services."dawarich-web".unitConfig.ConditionPathIsMountPoint = [ "/var/lib/dawarich" ];
+  systemd.services."dawarich-sidekiq-all".unitConfig.ConditionPathIsMountPoint = [ "/var/lib/dawarich" ];
+  systemd.services."dawarich-init-db".unitConfig.ConditionPathIsMountPoint = [ "/var/lib/dawarich" ];
 
   # Odysseus persistent data (DB, uploads, ChromaDB vectors, generated images,
   # etc.) on its own ZFS dataset. Both the app and the bundled ChromaDB service

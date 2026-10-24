@@ -32,6 +32,7 @@ let
     "ssd/data/forgejo"
     "small/data/immich"
     "ssd/data/karakeep"
+    "ssd/data/dawarich"
     "ssd/data/actual"
     "ssd/data/homeassistant"
     "ssd/data/freshrss"
