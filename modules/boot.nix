@@ -17,9 +17,6 @@ with lib; {
 
   boot = {
     initrd = {
-      # Enable systemd in init
-      systemd.enable = mkDefault true;
-
       kernelModules = [
         # Allow complex networking configurations during boot
         "macvlan"

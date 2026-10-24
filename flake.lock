@@ -514,22 +514,6 @@
         "type": "github"
       }
     },
-    "nixpkgs-small": {
-      "locked": {
-        "lastModified": 1792617723,
-        "narHash": "sha256-IyFA94SfEEqeru/RZyRRbmk8gtBejDTiojSReKzUOc8=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "dce1caf58d1a943af38b376e824a0d036ec3eea7",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable-small",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
     "odysseus": {
       "inputs": {
         "flake-compat": "flake-compat_3",
@@ -562,7 +546,6 @@
         "nixos-mailserver": "nixos-mailserver",
         "nixos-vex": "nixos-vex",
         "nixpkgs": "nixpkgs",
-        "nixpkgs-small": "nixpkgs-small",
         "odysseus": "odysseus"
       }
     },
