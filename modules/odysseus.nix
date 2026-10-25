@@ -26,6 +26,17 @@ let
           niquests = pyPrev.niquests.overridePythonAttrs (_: {
             doCheck = false;
           });
+          # nixpkgs marks posthog broken because one of its test-only
+          # dependencies (`mcp`) moved to 2.x. It builds fine, and chromadb
+          # needs it at runtime, so drop the (irrelevant) test suite and clear
+          # the marker.
+          posthog = pyPrev.posthog.overridePythonAttrs (old: {
+            doCheck = false;
+            nativeCheckInputs = [ ];
+            meta = old.meta // {
+              broken = false;
+            };
+          });
         })
       ];
     }

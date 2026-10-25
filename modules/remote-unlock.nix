@@ -1,9 +1,5 @@
 { config, pkgs, ... }:
 {
-  boot.initrd.systemd = {
-    enable = true;
-  };
-
   clan.core.vars.generators.initrd-ssh = {
     files."id_ed25519".neededFor = "activation";
     files."id_ed25519.pub".secret = false;

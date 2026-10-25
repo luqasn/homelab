@@ -16,10 +16,14 @@ let
   # `uv_build>=0.11.0,<0.12.0`, so its PEP 517 build aborts before compiling.
   # The backend is compatible; widen the constraint until upstream/nixpkgs
   # catches up.
-  requestsHardened = pkgs.python3Packages.requests-hardened.overrideAttrs (old: {
-    postPatch = (old.postPatch or "") + ''
-      substituteInPlace pyproject.toml \
-        --replace-fail 'uv_build>=0.11.0,<0.12.0' 'uv_build>=0.11.0,<0.13.0'
+  #
+  # Use sed rather than substituteInPlace: the pattern contains `>` and `<`,
+  # which the current stdenv turns into sed word-boundary anchors, so
+  # substituteInPlace never matches. Replace the base postPatch entirely; its
+  # only job is this same substitution.
+  requestsHardened = pkgs.python3Packages.requests-hardened.overrideAttrs (_: {
+    postPatch = ''
+      sed -i 's/uv_build>=0.11.0,<0.12.0/uv_build>=0.11.0,<0.13.0/' pyproject.toml
     '';
   });
 

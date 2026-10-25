@@ -5,9 +5,37 @@
   lib,
   ...
 }:
+let
+  # hoopsnake's NixOS module still branches on boot.initrd.systemd.enable to
+  # support a scripted stage-1. nixpkgs removed that option (and made reading it
+  # throw) when it dropped scripted stage-1 in
+  # https://github.com/NixOS/nixpkgs/commit/316b009d0df3, so importing the
+  # module unchanged fails to evaluate on current nixos-unstable.
+  #
+  # Patch the option read out of the module source at evaluation time instead of
+  # vendoring the module: the read is always true now (systemd is the only
+  # stage-1), and once hoopsnake drops its scripted path upstream the
+  # replacement becomes a no-op and this wrapper can be replaced by a plain
+  # `inputs.hoopsnake.nixosModules.default`.
+  hoopsnakeModule = import (
+    builtins.toFile "hoopsnake-module.nix" (
+      lib.replaceStrings [ "config.boot.initrd.systemd.enable" ] [ "true" ] (
+        builtins.readFile "${inputs.hoopsnake}/nixos/module.nix"
+      )
+    )
+  ) {
+    # The upstream module takes flake-parts' `withSystem` only to default its
+    # `package` option to the input's own build.
+    withSystem =
+      _system: f:
+      f {
+        config.packages.default = inputs.hoopsnake.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      };
+  };
+in
 {
   imports = [
-    inputs.hoopsnake.nixosModules.default
+    hoopsnakeModule
   ];
 
   boot.initrd = {
@@ -15,9 +43,6 @@
       enable = true;
     };
     systemd.extraBin.ping = "${pkgs.iputils}/bin/ping";
-    systemd = {
-      enable = true;
-    };
   };
 
   clan.core.vars.generators.initrd-ssh-hoopsnake = {
