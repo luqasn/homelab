@@ -455,11 +455,11 @@
         "sbomnix": "sbomnix"
       },
       "locked": {
-        "lastModified": 1792316341,
-        "narHash": "sha256-xO2xv1VQ5tHy/2aqmrJPvsB+/c0BbvvH3yOlBTI9UlU=",
+        "lastModified": 1792953290,
+        "narHash": "sha256-8rneyPhO18nDtQemmyW4aTGuh7Usqd3S4FXKUrOAE8M=",
         "owner": "datosh",
         "repo": "nixos-vex",
-        "rev": "30e8a252e96a44dd0c9c75b9febbb55d58b6b478",
+        "rev": "f7be53715896c9ad5dcfd6b4f48d3e156a84ce6a",
         "type": "github"
       },
       "original": {
