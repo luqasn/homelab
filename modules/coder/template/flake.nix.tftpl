@@ -112,6 +112,17 @@
           # package stays installed so command-line use still works.
           enablePiWeb      = ${enable_pi_web};
           enableCodeServer = ${enable_code_server};
+          enableBrowser    = ${enable_browser};
+
+          # CDP endpoint of the `pi-browser-desktop` unit below, injected into
+          # the pi-web units and the login environment so the agent's browser_*
+          # tools attach to the browser the user can watch instead of spawning a
+          # private headless one. Empty when the browser app is disabled — and
+          # Chromium is then not installed either, so a disabled workspace
+          # carries no browser at all.
+          piBrowserEnv = lib.optionalAttrs enableBrowser {
+            PI_BROWSER_CDP_URL = "http://127.0.0.1:9222";
+          };
         in
         {
 
@@ -411,7 +422,7 @@
           # source it reliably (they inherit their unit's environment and often
           # spawn a non-login shell), so those two units get `coderGitEnv`
           # explicitly below.
-          environment.sessionVariables = coderGitEnv;
+          environment.sessionVariables = coderGitEnv // piBrowserEnv;
 
           # ----------------------------------------------------------------
           # code-server (VS Code in the browser, proxied via the agent)
@@ -464,11 +475,12 @@
             wants       = [ "network-online.target" ];
             # `coderGitEnv` too: the coding-agent sessions this daemon spawns
             # run git themselves, and they are children of this unit, not of
-            # the Coder agent.
+            # the Coder agent. `piBrowserEnv` points the pi-browser extension
+            # at the desktop browser's CDP port when that app is enabled.
             environment = coderGitEnv // {
               HOME                 = "/home/${username}";
               PI_WEB_ALLOWED_HOSTS = "true";
-            };
+            } // piBrowserEnv;
             serviceConfig = {
               User             = "${username}";
               Group            = "${username}";
@@ -490,7 +502,7 @@
               PI_WEB_HOST          = "127.0.0.1";
               PI_WEB_PORT          = "8504";
               PI_WEB_ALLOWED_HOSTS = "true";
-            };
+            } // piBrowserEnv;
             serviceConfig = {
               User             = "${username}";
               Group            = "${username}";
@@ -500,6 +512,95 @@
               Restart          = "on-failure";
               RestartSec       = "2s";
             };
+          };
+
+          # ----------------------------------------------------------------
+          # BROWSER DESKTOP (headed Chromium on Xvfb, mirrored by noVNC)
+          # ----------------------------------------------------------------
+          # The agent's browser_* tools talk to Chromium over CDP (the
+          # `pi-browser.ts` extension installed into ~/.pi/agent/extensions by
+          # `pi-agent-defaults` below). This unit adds a *visible* browser on
+          # top of that: Xvfb :99, a headed Chromium rendering into it with the
+          # CDP port open on loopback, x11vnc exposing the framebuffer and noVNC
+          # (websockify) serving the HTML5 client on loopback:6080. main.tf
+          # exposes 6080 as the subdomain-based `browser` Coder app, so the
+          # dashboard renders the live browser as an app tab.
+          #
+          # The point is supervision, not decoration: the agent's CDP calls and
+          # the user's mouse act on the SAME browser and the same tabs, so the
+          # user can watch every step, take over for a CAPTCHA or a 2FA prompt,
+          # and hand control back without the session losing its state.
+          # `PI_BROWSER_CDP_URL` (see piBrowserEnv above) makes the extension
+          # attach here; when this unit is off or not up yet, the extension
+          # spawns its own private headless Chromium instead.
+          #
+          # Chromium's own sandbox needs unprivileged user namespaces, which the
+          # microvm kernel does not grant, hence --no-sandbox. That is
+          # acceptable here: this browser is a single-purpose renderer inside a
+          # disposable VM that already executes untrusted model-driven code.
+          # The profile lives on the persistent home share, so logins survive
+          # VM reboots — which is also the caveat: whatever is logged in here is
+          # reachable by the agent.
+          systemd.services.pi-browser-desktop = lib.mkIf enableBrowser {
+            description = "Chromium on Xvfb, mirrored to the dashboard via noVNC";
+            wantedBy    = [ "multi-user.target" ];
+            after       = [ "network-online.target" ];
+            wants       = [ "network-online.target" ];
+            environment = {
+              HOME           = "/home/${username}";
+              DISPLAY        = ":99";
+              CHROMIUM_FLAGS = "--no-sandbox --disable-gpu --disable-dev-shm-usage --password-store=basic --no-first-run --no-default-browser-check --disable-features=Translate,MediaRouter";
+            };
+            serviceConfig = {
+              User             = "${username}";
+              Group            = "${username}";
+              WorkingDirectory = "/home/${username}";
+              Environment      = "PATH=/run/current-system/sw/bin:/run/wrappers/bin";
+              # Always, not on-failure: `wait -n` below returns as soon as ANY
+              # child exits, and a browser that quits cleanly must still be
+              # brought back (it is the app window the user is watching).
+              Restart          = "always";
+              RestartSec       = "3s";
+              # The X11 socket lives in /tmp/.X11-unix; a private /tmp would
+              # hide it from x11vnc (and from anything else that connects).
+              PrivateTmp       = false;
+            };
+            script = ''
+              set -eu
+              mkdir -p "$HOME/.pi/browser-desktop"
+
+              # X server first: the browser, the VNC mirror and noVNC all need it.
+              $${pkgs.xvfb}/bin/Xvfb :99 -screen 0 1440x900x24 -nolisten tcp &
+              for _ in $(seq 1 100); do
+                if [ -S /tmp/.X11-unix/X99 ]; then break; fi
+                sleep 0.1
+              done
+
+              # The browser the agent drives over CDP and the user sees over VNC.
+              $${pkgs.chromium}/bin/chromium $CHROMIUM_FLAGS \
+                --remote-debugging-address=127.0.0.1 \
+                --remote-debugging-port=9222 \
+                --user-data-dir="$HOME/.pi/browser-desktop" \
+                --window-position=0,0 --window-size=1440,900 \
+                about:blank &
+
+              # VNC mirror of the framebuffer, then the HTML5 client Coder proxies.
+              $${pkgs.x11vnc}/bin/x11vnc -display :99 -localhost -nopw -forever -shared -noxdamage -rfbport 5900 -quiet &
+              # websockify directly rather than the `novnc` wrapper: the wrapper
+              # sanity-checks its child with `ps`, which is not guaranteed to be
+              # in this unit's PATH, and on failure it exits while leaving the
+              # proxy orphaned — which under Restart=always means a unit that
+              # flaps forever. --web points at the noVNC assets it would have
+              # served anyway.
+              $${pkgs.python3Packages.websockify}/bin/websockify \
+                --web $${pkgs.novnc}/share/webapps/novnc \
+                127.0.0.1:6080 127.0.0.1:5900 &
+
+              # First child to die tears the unit down; systemd restarts it
+              # (KillMode=control-group stops the rest of the processes, so no
+              # manual cleanup is needed here).
+              wait -n
+            '';
           };
 
           # ----------------------------------------------------------------
@@ -595,8 +696,22 @@
             };
             script = ''
               install -d -m 0755 /home/${username}/.pi/agent
+              install -d -m 0755 /home/${username}/.pi/agent/extensions
               install -m 0644 $${piAgentsMd} /home/${username}/.pi/agent/AGENTS.md
               install -m 0644 $${piSettingsJson} /home/${username}/.pi/agent/settings.json
+            '' + lib.optionalString enableBrowser ''
+              # pi-browser: the browser_* tools. Auto-discovered from the global
+              # extensions directory (Pi loads agentDir/extensions/*.ts), so it
+              # needs no entry in settings.json — and `pi config` can toggle it
+              # per project. The source is written next to this flake by
+              # main.tf; the hash check in main.tf guarantees it is the one in
+              # the repo.
+              install -m 0644 $${./pi-browser.ts} /home/${username}/.pi/agent/extensions/pi-browser.ts
+            '' + lib.optionalString (!enableBrowser) ''
+              # Toggling the browser app off must also remove the extension,
+              # otherwise a stale copy keeps advertising tools whose Chromium is
+              # no longer installed.
+              rm -f /home/${username}/.pi/agent/extensions/pi-browser.ts
             '';
           };
 
@@ -633,6 +748,12 @@
             # it without a `nix shell`. Per-project deps belong in a venv or a
             # project flake, not here.
             python3
+          ] ++ lib.optionals enableBrowser [
+            # Browser automation: `chromium` is what the pi-browser extension
+            # spawns when no desktop browser is reachable, and also what the
+            # `pi-browser-desktop` unit renders; xvfb/x11vnc/novnc are the
+            # watch-and-take-over stack behind the `browser` Coder app.
+            chromium xvfb x11vnc novnc
           ] ++ (
             builtins.filter (p: p != null) (
               builtins.map

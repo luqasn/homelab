@@ -157,6 +157,15 @@ data "coder_parameter" "enable_filebrowser" {
   mutable      = true
 }
 
+data "coder_parameter" "enable_browser" {
+  name         = "enable_browser"
+  display_name = "Browser (Chromium + VNC)"
+  description  = "Install Chromium and run the desktop browser the agent can drive: a headed Chromium on Xvfb, mirrored to a Browser app tab via noVNC, so you can watch the agent browse and take over for CAPTCHAs or logins. Disabling removes the browser package, its app and the agent's browser_* tools, and saves ~700 MiB of closure."
+  type         = "bool"
+  default      = "true"
+  mutable      = true
+}
+
 data "coder_parameter" "microvm_host" {
   name         = "microvm_host"
   display_name = "Microvm host"
@@ -308,6 +317,7 @@ locals {
   enable_pi_web      = data.coder_parameter.enable_pi_web.value == "true"
   enable_code_server = data.coder_parameter.enable_code_server.value == "true"
   enable_filebrowser = data.coder_parameter.enable_filebrowser.value == "true"
+  enable_browser     = data.coder_parameter.enable_browser.value == "true"
 }
 
 # ---------------------------------------------------------------------------
@@ -494,6 +504,49 @@ resource "coder_app" "pi-web" {
   }
 }
 
+# BROWSER — the desktop browser the agent drives, rendered in the dashboard via
+# noVNC. The workspace VM runs `pi-browser-desktop` (headed Chromium on Xvfb +
+# x11vnc + websockify, see flake.nix.tftpl): Chromium's CDP port is on
+# loopback:9222 (where the pi-browser extension attaches) and noVNC serves the
+# HTML5 client on loopback:6080. Coder proxies dashboard traffic to 6080 through
+# the agent tunnel, so the user watches the same tabs the agent is clicking and
+# can take the mouse for a CAPTCHA or login without the session losing state.
+#
+# Subdomain-based like the other workspace apps (path serving is disabled
+# server-side, CODER_DISABLE_PATH_APPS). `open_in = "slim"` would keep the
+# browser beside the chat in a side panel; "tab" is used here because the VNC
+# canvas wants the whole viewport to be usable.
+resource "coder_app" "browser" {
+  count        = local.enable_browser ? 1 : 0
+  agent_id     = coder_agent.main.id
+  slug         = "browser"
+  display_name = "Browser"
+  icon         = local.browser_icon
+  # autoconnect: open the RFB session immediately instead of waiting for a click.
+  # resize=scale: fit the 1440x900 framebuffer into whatever the app iframe is.
+  # reconnect: survive the VM restarting or the tunnel dropping.
+  url       = "http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale&reconnect=1"
+  subdomain = true
+  share     = "owner"
+  open_in   = "tab"
+  # Keep the two workspace-card quick-launch slots for "Pi Web" and "VS Code
+  # (web)" — see the filebrowser module's comment on WORKSPACE_APPS_SLOTS.
+  order = 100
+
+  lifecycle {
+    precondition {
+      condition     = length(local.browser_icon) <= 256
+      error_message = "Coder's workspace_apps.icon is a varchar(256); local.browser_icon is ${length(local.browser_icon)} characters. Shorten local.browser_icon_svg."
+    }
+  }
+
+  healthcheck {
+    url       = "http://127.0.0.1:6080/vnc.html"
+    interval  = 5
+    threshold = 12
+  }
+}
+
 # OPENCODE 2.x — the OpenCode coding-agent web UI. The workspace VM runs
 # `opencode serve` on loopback:8511 and a small nginx on loopback:8510 in front
 # of it (see flake.nix.tftpl): opencode always requires a password and the Coder
@@ -632,6 +685,15 @@ locals {
   # the newline the heredoc puts back. Checked in step 2 below.
   opencode_package_nix_sha = sha256("${local.opencode_package_nix}\n")
 
+  # `pi-browser.ts` — the Pi extension that gives the agent browser_* tools
+  # (Chromium over CDP). Like the package files above it is written next to the
+  # flake by the step-1 provisioner; the generated `pi-agent-defaults` unit then
+  # installs it into ~/.pi/agent/extensions, where Pi auto-discovers it. Hash-
+  # verified in step 2 for the same reason as the pi-web lockfile: without it a
+  # stray byte only surfaces later as a tool that silently failed to load.
+  pi_browser_extension     = chomp(file("${path.module}/pi-browser-extension.ts"))
+  pi_browser_extension_sha = sha256("${local.pi_browser_extension}\n")
+
   # pi-web's dashboard icon: the mathematical pi glyph as an inline SVG,
   # base64-encoded into a data URI. Coder's built-in icon set (site/static/icon)
   # has no pi and Unicode has no pi emoji, so the only way to get the symbol
@@ -656,6 +718,11 @@ locals {
   # 256-character workspace_apps.icon limit — see the pi_icon comment for why.
   opencode_icon_svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#f0883e\" stroke-width=\"2\"><path d=\"M4 8l4 4-4 4M12 16h8\"/></svg>"
   opencode_icon     = "data:image/svg+xml;base64,${base64encode(local.opencode_icon_svg)}"
+
+  # The Browser app's icon: a globe, same inline-SVG style as the two above and
+  # under the same 256-character workspace_apps.icon limit (this one is 246).
+  browser_icon_svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#58a6ff\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18\"/></svg>"
+  browser_icon     = "data:image/svg+xml;base64,${base64encode(local.browser_icon_svg)}"
 
   flake_nix = chomp(templatefile("${path.module}/flake.nix.tftpl", {
     vm_name               = local.vm_name_s
@@ -684,6 +751,7 @@ locals {
     # input (toggling it does not force a VM rebuild).
     enable_pi_web      = local.enable_pi_web
     enable_code_server = local.enable_code_server
+    enable_browser     = local.enable_browser
   }))
 }
 
@@ -739,8 +807,12 @@ resource "null_resource" "microvm" {
     # instead of leaving a stale copy that fails with "hash mismatch in
     # fixed-output derivation". These are not secrets, so no nonsensitive() is
     # needed.
-    pi_web_hash     = sha256("${local.pi_web_package_nix}\n${local.pi_web_package_lock}")
-    opencode_hash   = sha256("${local.opencode_package_nix}\n")
+    pi_web_hash   = sha256("${local.pi_web_package_nix}\n${local.pi_web_package_lock}")
+    opencode_hash = sha256("${local.opencode_package_nix}\n")
+    # Same reasoning for the browser extension: editing pi-browser-extension.ts
+    # must rewrite the file on the host, otherwise the VM keeps installing the
+    # previous version into ~/.pi/agent/extensions.
+    pi_browser_hash = sha256("${local.pi_browser_extension}\n")
     workspace_start = data.coder_workspace.me.start_count
     # SSH connection details mirrored here so the destroy-time provisioner can
     # build its own connection from self.triggers.* (Terraform forbids
@@ -839,6 +911,7 @@ resource "null_resource" "microvm" {
       "cat > ${local.flake_dir}/pi-web/package.nix << 'TERRAFORMEOF'\n${local.pi_web_package_nix}\nTERRAFORMEOF",
       "cat > ${local.flake_dir}/pi-web/package-lock.json << 'TERRAFORMEOF'\n${local.pi_web_package_lock}\nTERRAFORMEOF",
       "cat > ${local.flake_dir}/opencode/package.nix << 'TERRAFORMEOF'\n${local.opencode_package_nix}\nTERRAFORMEOF",
+      "cat > ${local.flake_dir}/pi-browser.ts << 'TERRAFORMEOF'\n${local.pi_browser_extension}\nTERRAFORMEOF",
       "cat > ${local.flake_dir}/coder-overlay.nix << 'TERRAFORMEOF'\n${local.coder_overlay_nix}\nTERRAFORMEOF",
       "cat > ${local.flake_dir}/flake.nix << 'TERRAFORMEOF'\n${local.flake_nix}\nTERRAFORMEOF",
     ]
@@ -894,6 +967,8 @@ resource "null_resource" "microvm" {
       "echo '${local.pi_web_package_lock_sha}  ${local.flake_dir}/pi-web/package-lock.json' | sha256sum -c -",
       "echo '==> verifying OpenCode sources on this host:'",
       "echo '${local.opencode_package_nix_sha}  ${local.flake_dir}/opencode/package.nix' | sha256sum -c -",
+      "echo '==> verifying the pi-browser extension on this host:'",
+      "echo '${local.pi_browser_extension_sha}  ${local.flake_dir}/pi-browser.ts' | sha256sum -c -",
       "nix build '${local.flake_dir}#nixosConfigurations.${local.vm_name_s}.config.microvm.runner.${data.coder_parameter.hypervisor.value}' --out-link ${local.vm_dir}/current",
 
       # 3. Stop any existing instance then (re)start
