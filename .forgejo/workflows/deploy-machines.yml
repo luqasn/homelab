@@ -2,13 +2,15 @@
 #
 # Runs on the in-house native runner (label "native:host"), i.e. directly on
 # elserver — the same host that runs Forgejo — so `clan machines update` reuses
-# the host's nix store and can reach both machines over SSH.
+# the host's nix store and can reach the machines over SSH.
 #
 # offsite-backup is normally powered off (it is only woken for the nightly
-# backup; see modules/offsite-backup.nix), but it is still a `clan machines
-# update` target, so it must be up before the update and powered down again
-# afterwards. Instead of driving IPMI/smart-switch directly, this workflow
-# reuses the exact systemd units the backup itself runs through:
+# backup; see modules/offsite-backup.nix), so pushes to main do NOT update it:
+# waking it for every merge is not worth it. It is still part of a manual
+# `workflow_dispatch` run, which updates it like any other machine — the
+# workflow powers it on first and down again afterwards. Instead of driving
+# IPMI/smart-switch directly, this workflow reuses the exact systemd units the
+# backup itself runs through:
 #
 #   * turn-on.service  — powers the smart switch + IPMI on and waits for SSH
 #   * turn-off.service — IPMI soft-off, waits for power-off, cuts the switch
@@ -119,6 +121,9 @@ jobs:
           chmod 600 "$HOME/.config/sops/age/keys.txt"
 
       - name: Power on offsite-backup
+        # Only manual runs deploy offsite-backup: pushes to main skip it in the
+        # update step below, so there is no reason to wake the host then.
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           export PATH="/run/current-system/sw/bin:$PATH"
@@ -183,12 +188,22 @@ jobs:
           # targetHost). --target-host accepts only one machine, hence the loop
           # over the inventory. Machine names match their target hosts here
           # (root@elserver / root@offsite-backup).
+          #
+          # offsite-backup is skipped on pushes to main: it is powered off ~23h
+          # a day, so waking it for every merge is not worth it. A manual
+          # workflow_dispatch run still updates it through the power-on /
+          # power-off steps around this one.
+          update_offsite_backup="${{ github.event_name == 'workflow_dispatch' }}"
           machines="$(nix develop --command clan machines list)"
           if [ -z "$machines" ]; then
             echo "::error::clan machines list returned no machines"
             exit 1
           fi
           for machine in $machines; do
+            if [ "$machine" = "offsite-backup" ] && [ "$update_offsite_backup" != "true" ]; then
+              echo "Skipping $machine: it is only updated on manual workflow_dispatch runs"
+              continue
+            fi
             nix develop --command clan machines update "$machine" \
               --host-key-check accept-new \
               --target-host "root@${machine}?IdentityFile=$HOME/.ssh/homelab_deploy" \
@@ -214,7 +229,8 @@ jobs:
       - name: Power off offsite-backup
         # Only power the host back down after a successful update; leave it up
         # if the deploy failed so the failure can be inspected in place.
-        if: success()
+        # Skipped on pushes to main, where offsite-backup is never powered on.
+        if: success() && github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           export PATH="/run/current-system/sw/bin:$PATH"
