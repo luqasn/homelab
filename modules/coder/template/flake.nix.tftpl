@@ -584,16 +584,40 @@
                 --window-position=0,0 --window-size=1440,900 \
                 about:blank &
 
+              # Serve a web root of our own rather than the novnc package
+              # directory. noVNC ships vnc.html but no index.html, and Coder's
+              # subdomain app proxy forwards the request path unchanged (`/` for
+              # the app's root — the app URL's path is dropped, only its query
+              # survives), so a request for `/` hit websockify's directory
+              # handler and came back as the Python http.server 404 "File not
+              # found" page. index.html is the same client page, so `/` opens the
+              # viewer and still picks up ?autoconnect=1&resize=scale from the
+              # app URL; the assets stay next to it, so their relative paths
+              # resolve from the root.
+              WEBROOT="$HOME/.pi/browser-web"
+              # `cp` from the store inherits its read-only modes, which would make
+              # the next start's `rm -rf` fail inside the frozen directories — so
+              # copy without preserving mode/ownership and keep the tree
+              # writable.
+              if [ -e "$WEBROOT" ]; then
+                chmod -R u+w "$WEBROOT" 2>/dev/null || true
+                rm -rf "$WEBROOT"
+              fi
+              mkdir -p "$WEBROOT"
+              cp -r --no-preserve=mode,ownership $${pkgs.novnc}/share/webapps/novnc/. "$WEBROOT"/
+              cp "$WEBROOT/vnc.html" "$WEBROOT/index.html"
+
               # VNC mirror of the framebuffer, then the HTML5 client Coder proxies.
               $${pkgs.x11vnc}/bin/x11vnc -display :99 -localhost -nopw -forever -shared -noxdamage -rfbport 5900 -quiet &
               # websockify directly rather than the `novnc` wrapper: the wrapper
               # sanity-checks its child with `ps`, which is not guaranteed to be
               # in this unit's PATH, and on failure it exits while leaving the
               # proxy orphaned — which under Restart=always means a unit that
-              # flaps forever. --web points at the noVNC assets it would have
-              # served anyway.
+              # flaps forever. `--file-only` keeps the web root from being
+              # browsable; every asset the client needs is linked from
+              # index.html/vnc.html.
               $${pkgs.python3Packages.websockify}/bin/websockify \
-                --web $${pkgs.novnc}/share/webapps/novnc \
+                --web "$WEBROOT" --file-only \
                 127.0.0.1:6080 127.0.0.1:5900 &
 
               # First child to die tears the unit down; systemd restarts it
