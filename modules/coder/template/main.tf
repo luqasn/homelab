@@ -525,7 +525,13 @@ resource "coder_app" "browser" {
   # autoconnect: open the RFB session immediately instead of waiting for a click.
   # resize=scale: fit the 1440x900 framebuffer into whatever the app iframe is.
   # reconnect: survive the VM restarting or the tunnel dropping.
-  url       = "http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale&reconnect=1"
+  #
+  # The path must be `/`, not `/vnc.html`: for subdomain apps Coder proxies the
+  # request path through unchanged and keeps only the app URL's *query*, so a
+  # `/vnc.html` here would be dropped and the app's root request would land on
+  # the web root instead. The VM's web root serves the noVNC client at `/`
+  # (index.html is a copy of vnc.html) for exactly that reason.
+  url       = "http://127.0.0.1:6080/?autoconnect=1&resize=scale&reconnect=1"
   subdomain = true
   share     = "owner"
   open_in   = "tab"
@@ -541,7 +547,7 @@ resource "coder_app" "browser" {
   }
 
   healthcheck {
-    url       = "http://127.0.0.1:6080/vnc.html"
+    url       = "http://127.0.0.1:6080/"
     interval  = 5
     threshold = 12
   }
